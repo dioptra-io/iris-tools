@@ -8,6 +8,7 @@ shellcheck "$0" # exits if shellcheck doesn't pass
 readonly PROG_NAME="${0##*/}"
 CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
 FORCE=false # --force
+POSITIONAL_ARGS=()
 
 
 usage() {
@@ -38,7 +39,7 @@ main() {
 	source "${IRIS_ENV}"
 
         echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
-        for meas_uuid in "$@"; do
+	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_UPLOAD[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
 				echo "do not have query for exproting ${table_prefix} tables"
@@ -74,8 +75,8 @@ upload_tables() {
 		if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}" > /dev/null 2>&1; then
 			echo "${bq_iris_table} already uploaded"
 			# Check if the iris table has already been converted to scamper1 table.
-			if bq show --project_id="${GCP_PROJECT_ID}" "scamper1_${bq_iris_table}" > /dev/null 2>&1; then
-				echo "scamper1_${bq_iris_table} already converted"
+			if bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}_scamper1" > /dev/null 2>&1; then
+				echo "${bq_iris_table}_scamper1 already converted"
 				continue
 			fi
 		else
@@ -138,6 +139,7 @@ parse_args() {
                 echo "${PROG_NAME}: specify at least one measurement uuid"
                 usage 1
         fi
+	POSITIONAL_ARGS=("$@")
 }
 
 main "$@"

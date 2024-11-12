@@ -51,10 +51,10 @@ main() {
 			"${CLEAN_TABLES}" "${flags[@]}" "${uuid}"
 		fi
 		if ${DO_EXPORT}; then
-			"${EXPORT_TABLES}" "${flags[@]}" "${uuid}" # XXX
+			"${EXPORT_TABLES}" "${flags[@]}" "${uuid}"
 		fi
 		if ${DO_UPLOAD}; then
-			"${UPLOAD_TABLES}" "${flags[@]}" "${uuid}" # XXX
+			"${UPLOAD_TABLES}" "${flags[@]}" "${uuid}"
 		fi
 		echo
 	done < "${MEAS_MD_SELECTED_TXT}"

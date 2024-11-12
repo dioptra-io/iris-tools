@@ -7,6 +7,7 @@ shellcheck "$0" # exits if shellcheck doesn't pass
 readonly PROG_NAME="${0##*/}"
 CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
 FORCE=false # --force
+POSITIONAL_ARGS=()
 
 
 usage() {
@@ -43,7 +44,7 @@ main() {
 	source "${IRIS_ENV}"
 
 	echo "tables to clean: ${TABLES_TO_CLEAN[*]}"
-	for meas_uuid in "$@"; do
+	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_CLEAN[@]}"; do
 			echo "cleaning ${meas_uuid} ${table_prefix} tables"
 			clean_tables "${meas_uuid}" "${table_prefix}"
@@ -74,11 +75,9 @@ clean_tables() {
 		#
 		# XXX This logic assumes that each table has a cleaned counterpart.
 		#
-		if ! ${FORCE}; then
-			if grep -q "cleaned_${table_name}" "${tmpfile}"; then
-				echo "${table_name} already cleaned"
-				continue
-			fi
+		if ! ${FORCE} && grep -q "cleaned_${table_name}" "${tmpfile}"; then
+			echo "${table_name} already cleaned"
+			continue
 		fi
 
 		echo "creating query file to clean ${table_name}"
@@ -162,6 +161,7 @@ parse_args() {
                 echo "${PROG_NAME}: specify at least one measurement uuid"
 		usage 1
         fi
+	POSITIONAL_ARGS=("$@")
 }
 
 main "$@"

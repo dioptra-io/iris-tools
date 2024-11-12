@@ -8,6 +8,7 @@ shellcheck "$0" # exits if shellcheck doesn't pass
 readonly PROG_NAME="${0##*/}"
 CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
 FORCE=false # --force
+POSITIONAL_ARGS=()
 
 
 usage() {
@@ -17,7 +18,7 @@ usage() {
 usage:
         ${PROG_NAME} [-hf] [-c <config>] <uuid>...
         -h, --help      print help message and exit
-        -f, --force     export tables even if they already exist in the cache
+        -f, --force     export tables even if already exported (i.e., exists in the cache)
         -c, --config    configuration file (default ${CONFIG_FILE})
 
         uuid: measurement uuid
@@ -44,7 +45,7 @@ main() {
 	source "${IRIS_ENV}"
 
         echo "tables to export: ${TABLES_TO_EXPORT[*]}"
-        for meas_uuid in "$@"; do
+	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_EXPORT[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
 				echo "do not have query for exproting ${table_prefix} tables"
@@ -82,8 +83,8 @@ export_tables() {
 			fi
 		fi
 		export_file="${EXPORT_DIR}/${table_name}.${EXPORT_FORMAT}"
-		if [[ ! ${FORCE} && -f "${export_file}" ]]; then
-			echo "${export_file} already exists"
+		if ! ${FORCE} && [[ -f "${export_file}" ]]; then
+			echo "${export_file} already exported"
 			continue
 		fi
 		verify_free_space 10
@@ -137,6 +138,7 @@ parse_args() {
                 echo "${PROG_NAME}: specify at least one measurement uuid"
                 usage 1
         fi
+	POSITIONAL_ARGS=("$@")
 }
 
 main "$@"
