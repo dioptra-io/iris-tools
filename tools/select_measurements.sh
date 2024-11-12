@@ -5,7 +5,7 @@ set -o pipefail
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/tables.conf" # --config
+CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
 FORCE=false # --force
 
 
@@ -16,7 +16,7 @@ usage() {
 usage:
         ${PROG_NAME} [-hf] [-c <config>] <uuid>...
         -h, --help      print help message and exit
-        -f, --force     recreate \$MEAS_MD_ALL_JSON and \$MEAS_MD_SELECTED even if they exist
+        -f, --force     recreate \$MEAS_MD_ALL_JSON and \$MEAS_MD_SELECTED_TXT even if they exist
         -c, --config    configuration file (default ${CONFIG_FILE})
 
         uuid: measurement uuid
@@ -55,10 +55,10 @@ main() {
 
 	# Next, select the measurements that we are interested in.  Look at
 	# $CONFIG_FILE for the selection criteria.
-	if ! ${FORCE} && [[ -f "${MEAS_MD_SELECTED}" ]]; then
-		echo using existing "${MEAS_MD_SELECTED}"
+	if ! ${FORCE} && [[ -f "${MEAS_MD_SELECTED_TXT}" ]]; then
+		echo using existing "${MEAS_MD_SELECTED_TXT}"
 	else
-		echo creating "${MEAS_MD_SELECTED}"
+		echo creating "${MEAS_MD_SELECTED_TXT}"
 		echo "filtering by measurement attributes"
 		tmpfile1=$(filter_by_attribute)
 		echo "$(wc -l < "${tmpfile1}") measurements in ${tmpfile1}"
@@ -70,10 +70,10 @@ main() {
 		echo "filtering by worker failures"
 		tmpfile3=$(find_worker_failures)
 		tmpfile4=$(filter_by_worker_failures "${tmpfile2}" "${tmpfile3}")
-		mv "${tmpfile4}" "${MEAS_MD_SELECTED}"
+		mv "${tmpfile4}" "${MEAS_MD_SELECTED_TXT}"
 		#rm -f "${tmpfile1}" "${tmpfile2}" "${tmpfile3}" XXX
 	fi
-	echo "$(wc -l < "${MEAS_MD_SELECTED}") selected measurements in ${MEAS_MD_SELECTED}"
+	echo "$(wc -l < "${MEAS_MD_SELECTED_TXT}") selected measurements in ${MEAS_MD_SELECTED_TXT}"
 }
 
 filter_by_attribute() {

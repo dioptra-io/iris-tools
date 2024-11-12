@@ -5,7 +5,7 @@ set -o pipefail
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/tables.conf" # --config
+CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
 FORCE=false # --force
 DO_SELECT=false # select
 DO_CLEAN=false # clean
@@ -36,7 +36,7 @@ main() {
 	source "${CONFIG_FILE}"
 	echo "CONFIG_FILE=${CONFIG_FILE}"
 	echo "MEAS_MD_ALL_JSON=${MEAS_MD_ALL_JSON}"
-	echo "MEAS_MD_SELECTED=${MEAS_MD_SELECTED}"
+	echo "MEAS_MD_SELECTED_TXT=${MEAS_MD_SELECTED_TXT}"
 
 	flags=(-c "${CONFIG_FILE}")
 	if ${FORCE}; then
@@ -51,13 +51,13 @@ main() {
 			"${CLEAN_TABLES}" "${flags[@]}" "${uuid}"
 		fi
 		if ${DO_EXPORT}; then
-			echo "${EXPORT_TABLES}" "${flags[@]}" "${uuid}" # XXX
+			"${EXPORT_TABLES}" "${flags[@]}" "${uuid}" # XXX
 		fi
 		if ${DO_UPLOAD}; then
-			echo "${UPLOAD_TABLES}" "${flags[@]}" "${uuid}" # XXX
+			"${UPLOAD_TABLES}" "${flags[@]}" "${uuid}" # XXX
 		fi
 		echo
-	done < "${MEAS_MD_SELECTED}"
+	done < "${MEAS_MD_SELECTED_TXT}"
 }
 
 parse_args() {

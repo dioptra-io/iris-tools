@@ -6,7 +6,7 @@ shopt -s nullglob
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/tables.conf" # --config
+CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
 FORCE=false # --force
 
 
@@ -40,7 +40,7 @@ main() {
 		echo "irisctl will use IRIS_PASSWORD environment variable when invoked"
 	fi
 
-	# shellcheck disable=SC1091
+	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
 
         echo "tables to export: ${TABLES_TO_EXPORT[*]}"

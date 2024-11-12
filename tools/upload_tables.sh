@@ -6,7 +6,7 @@ shopt -s nullglob
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/tables.conf" # --config
+CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
 FORCE=false # --force
 
 
@@ -34,8 +34,8 @@ main() {
         # shellcheck disable=SC1090
         source "${CONFIG_FILE}"
 
-	# shellcheck disable=SC1091
-	source ""${IRIS_ENV}"
+	# shellcheck disable=SC1090
+	source "${IRIS_ENV}"
 
         echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
         for meas_uuid in "$@"; do
@@ -71,7 +71,7 @@ upload_tables() {
 
 		# Check if the iris table is already uploaded.
 		echo bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}"
-		if bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}" > /dev/null 2>&1; then
+		if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}" > /dev/null 2>&1; then
 			echo "${bq_iris_table} already uploaded"
 			# Check if the iris table has already been converted to scamper1 table.
 			if bq show --project_id="${GCP_PROJECT_ID}" "scamper1_${bq_iris_table}" > /dev/null 2>&1; then
