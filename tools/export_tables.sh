@@ -48,7 +48,7 @@ main() {
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_EXPORT[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
-				echo "do not have query for exproting ${table_prefix} tables"
+				echo "do not have query for exporting ${table_prefix} tables"
 				return 1
 			fi
 			echo exporting "${meas_uuid}" "${table_prefix}" tables
@@ -78,7 +78,8 @@ export_tables() {
         for table_name in "${meas_tables_names[@]}"; do
                 if [[ "${table_name}" != "cleaned_"* ]]; then
 			if grep -q "cleaned_${table_name}" "${tmpfile}"; then
-				echo "skipping ${table_name} because it has a cleaned version"
+				echo "not exporting the following table because it has a cleaned version"
+				echo "${table_name}"
 				continue
 			fi
 		fi

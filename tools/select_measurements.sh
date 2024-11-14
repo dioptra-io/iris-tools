@@ -49,7 +49,7 @@ main() {
 			echo "${output}"
 			exit 1
 		fi
-		mv "${output/saving in /}" "${MEAS_MD_ALL_JSON}"
+		mv "${output/*saving in /}" "${MEAS_MD_ALL_JSON}"
 	fi
 	echo "$(jq .count "${MEAS_MD_ALL_JSON}" | uniq) total measurements in ${MEAS_MD_ALL_JSON}"
 

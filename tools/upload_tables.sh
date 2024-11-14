@@ -42,7 +42,7 @@ main() {
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_UPLOAD[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
-				echo "do not have query for exproting ${table_prefix} tables"
+				echo "do not have query for uploading ${table_prefix} tables"
 				return 1
 			fi
 			echo uploading "${meas_uuid}" "${table_prefix}" tables
@@ -66,7 +66,7 @@ upload_tables() {
 	fi
 
 	echo "${SCHEMA_RESULTS}" > "${SCHEMA_RESULTS_JSON}"
-	for path in "${EXPORT_DIR}"/*."${EXPORT_FORMAT}"; do
+	for path in "${EXPORT_DIR}"/"${meas_uuid}"*."${EXPORT_FORMAT}"; do
 		filename="${path##*/}" # remove everything up to the last slash
 		bq_iris_table="${BQ_DATASET}.${filename%.${EXPORT_FORMAT}}"
 
