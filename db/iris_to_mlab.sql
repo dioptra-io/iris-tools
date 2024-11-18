@@ -6,7 +6,7 @@
   -- NOTE: `reply_mpls_labels` would have to be transformed from an array of tuples to an array of structs to be imported in BQ.
   -- Declare and set variables for the table
 DECLARE
-  scamper_table_name STRING DEFAULT @scamper_table_name_param;
+  scamper1_table STRING DEFAULT @scamper1_table_name_param;
 DECLARE
   table_name STRING DEFAULT @table_name_param;
 DECLARE
@@ -23,7 +23,7 @@ DECLARE
   failure_probability STRING DEFAULT @failure_probability_param;
   -- Creating a new table from the query results using EXECUTE IMMEDIATE
 DECLARE
-  create_table_sql STRING;
+  convert_iris_to_scamper1 STRING;
   -- Iris always uses IPv6 addresses internally and store IPv4 addresses
   -- as IPv4-mapped IPv6 addresses. This converts IPv4-mapped addresses
   -- back to regular IPv4s in dot-decimal notation.
@@ -43,8 +43,8 @@ CREATE TEMP FUNCTION
   make_timestamp(ts TIMESTAMP) AS ( STRUCT( UNIX_SECONDS(ts) AS Sec,
       NULL AS Usec ) );
 SET
-  create_table_sql = FORMAT("""
-CREATE TABLE `%s` AS  -- Iris table in format scamper1
+  convert_iris_to_scamper1 = FORMAT("""
+INSERT INTO `%s` -- scamper1 table
 WITH
 -- This CTE counts the number of replies for each unique combination of probe parameters.
 replies_count AS (
@@ -245,6 +245,6 @@ SELECT
   ) AS raw
 FROM links_by_node lbn
 GROUP BY probe_protocol, probe_src_addr, probe_dst_addr
-""", scamper_table_name, table_name, table_name, hostname, hostname, version, user_id, tool, min_ttl, failure_probability);
+""", scamper1_table, table_name, table_name, hostname, hostname, version, user_id, tool, min_ttl, failure_probability);
 EXECUTE IMMEDIATE
-  create_table_sql;
+  convert_iris_to_scamper1;
