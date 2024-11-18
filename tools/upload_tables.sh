@@ -64,21 +64,15 @@ upload_tables() {
 		echo "no ${EXPORT_FORMAT} files in ${EXPORT_DIR}"
 		return
 	fi
-
 	echo "${SCHEMA_RESULTS}" > "${SCHEMA_RESULTS_JSON}"
-	for path in "${EXPORT_DIR}"/"${meas_uuid}"*."${EXPORT_FORMAT}"; do
+	for path in "${EXPORT_DIR}"/*"${meas_uuid//-/_}"*."${EXPORT_FORMAT}"; do
 		filename="${path##*/}" # remove everything up to the last slash
 		bq_iris_table="${BQ_DATASET}.${filename%.${EXPORT_FORMAT}}"
-
 		# Check if the iris table is already uploaded.
 		echo bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}"
 		if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}" > /dev/null 2>&1; then
 			echo "${bq_iris_table} already uploaded"
-			# Check if the iris table has already been converted to scamper1 table.
-			if bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}_scamper1" > /dev/null 2>&1; then
-				echo "${bq_iris_table}_scamper1 already converted"
-				continue
-			fi
+			# XXX Add logic to avoid converting measurements twice.
 		else
 			# create the table with the schema file
 			echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}" --table "${bq_iris_table}"
@@ -100,7 +94,7 @@ convert_and_create_scamper1() {
 
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
-		--parameter="scamper_table_name_param:STRING:${bq_iris_table}_scamper1" \
+		--parameter="scamper1_table_name_param:STRING:${BQ_DATASET}.${BQ_TABLE}" \
 		--parameter="table_name_param:STRING:${bq_iris_table}" \
 		--parameter="host_param:STRING:asia-east1" \
 		--parameter="version_param:STRING:1.1.5" \
