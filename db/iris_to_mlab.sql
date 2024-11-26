@@ -14,8 +14,6 @@ DECLARE
 DECLARE
   version STRING DEFAULT @version_param;
 DECLARE
-  user_id STRING DEFAULT @user_id_param;
-DECLARE
   tool STRING DEFAULT @tool_param;
 DECLARE
   min_ttl STRING DEFAULT @min_ttl_param;
@@ -40,8 +38,8 @@ CREATE TEMP FUNCTION make_timestamp(ts TIMESTAMP) AS (
 */
   -- Create the timestamp structure output by Scamper.
 CREATE TEMP FUNCTION
-  make_timestamp(ts TIMESTAMP) AS ( STRUCT( UNIX_SECONDS(ts) AS Sec,
-      NULL AS Usec ) );
+  make_timestamp(ts TIMESTAMP) AS (STRUCT(CAST(UNIX_SECONDS(ts) AS INT64) AS Sec,
+      NULL AS Usec));
 SET
   convert_iris_to_scamper1 = FORMAT("""
 INSERT INTO `%s` -- scamper1 table
@@ -142,10 +140,12 @@ links_by_node AS (
           -- Iris stores the RTT in 1/10th of milliseconds (e.g. 123 = 12.3ms).
           -- Use it to infer the tx time from the rx time.
           -- make_timestamp(TIMESTAMP_SUB(capture_timestamp, INTERVAL rtt * 100 MICROSECOND)) AS Tx,
-          NULL           AS Tx,
-          reply_count    AS Replyc,
-          probe_ttl      AS TTL,
-          1              AS Attempt, -- Our current tools only do a single attempt.
+          STRUCT(
+	    NULL AS Sec,
+            NULL AS Usec) AS Tx,
+          reply_count     AS Replyc,
+          probe_ttl       AS TTL,
+          1               AS Attempt, -- Our current tools only do a single attempt.
           CASE
             WHEN probe_src_port > 24000 THEN probe_src_port  -- Use probe_src_port if greater than 24000
             ELSE CAST(SPLIT(probe_dst_addr, '.')[OFFSET(3)] AS INT64)  -- Else, use the last octet of probe_dst_addr
@@ -153,9 +153,11 @@ links_by_node AS (
           [
             STRUCT(
               -- make_timestamp(capture_timestamp) AS Rx,
-              NULL            AS Rx,
+              STRUCT(
+	        NULL AS Sec,
+		NULL AS Usec) AS Rx,
               reply_ttl       AS TTL,
-              rtt/10          AS RTT,
+              rtt/10.0        AS RTT,
               reply_icmp_type AS icmp_type,
               reply_icmp_code AS icmp_code,
               NULL            AS icmp_q_tos, -- Not stored in Iris
@@ -169,60 +171,53 @@ links_by_node AS (
   GROUP BY 1, 2, 3, 4
 )
 SELECT
-  NULL AS id,
+  '' AS id,
   -- TODO: @SaiedKazemi I'll let you fill the right values for the `parser` structure.
   STRUCT(
-    NULL AS Version,
-    NULL AS Time,
-    NULL AS ArchiveURL,
-    NULL AS Filename,
-    NULL AS Priority,
-    NULL AS GitCommit
+    CAST(NULL AS STRING) AS Version,
+    CURRENT_TIMESTAMP() AS Time,
+    CAST(NULL AS STRING) AS ArchiveURL,
+    CAST(NULL AS STRING) AS Filename,
+    CAST(NULL AS INT64) AS Priority,
+    CAST(NULL AS STRING) AS GitCommit
   ) AS parser,
   CURRENT_DATE() AS date,
   STRUCT(
     -- TODO: @SaiedKazemi I'll let you fill the right values for the `Metadata` structure.
-    STRUCT(
+  STRUCT(
       GENERATE_UUID() AS UUID,
-      NULL AS TracerouteCallerVersion,
-      NULL AS CachedResult,
-      NULL AS CachedUUID
+      CAST(NULL AS STRING) AS TracerouteCallerVersion,
+      CAST(NULL AS BOOLEAN) AS CachedResult,
+      CAST(NULL AS STRING) AS CachedUUID
     ) AS Metadata,
     STRUCT(
       'cycle-start'                           AS Type,
       'default'                               AS list_name,
-      0                                       AS ID,
+      CAST(NULL AS FLOAT64)                                       AS ID,
       '%s' AS Hostname,
-      UNIX_SECONDS(MIN(last_timestamp))       AS start_time
+     CAST( UNIX_SECONDS(MIN(last_timestamp)) AS FLOAT64)       AS start_time
     ) AS CycleStart,
-    STRUCT(
-      'cycle-stop'                            AS Type,
-      'default'                               AS list_name,
-      0                                       AS ID,
-      '%s' AS Hostname,
-      UNIX_SECONDS(MAX(last_timestamp))       AS stop_time
-    ) AS CycleStop,
     STRUCT(
       'tracelb'                                  AS type,
       '%s'     AS version,
-      '%s'     AS userid,
+      CAST(NULL AS FLOAT64)     AS userid,
       '%s'     AS method,
       probe_src_addr                             AS src,
       probe_dst_addr                             AS dst,
       make_timestamp(MIN(first_timestamp))       AS start,
-      NULL AS probe_size,   -- Not stored in Iris
-      CAST('%s' AS INT)     AS firsthop,
-      1                                          AS attempts,     -- Our current tools always send a single probe.
+      CAST(NULL AS FLOAT64) AS probe_size,   -- Not stored in Iris
+      CAST('%s' AS FLOAT64)     AS firsthop,
+      1.0                                          AS attempts,     -- Our current tools always send a single probe.
       1.0 - CAST('%s' AS FLOAT64)  AS confidence,
-      NULL                                       AS tos,          -- Not stored in Iris
-      NULL                                       AS gaplimit,     -- Not applicable
-      NULL                                       AS wait_timeout, -- Not applicable
-      NULL                                       AS wait_probe,   -- Not applicable
-      NULL                                       AS probec,       -- TODO: Retrieve actual probe count from the measurement metadata.
-      NULL                                       AS probec_max,   -- Not applicable
-      COUNT(*)                                   AS nodec,
+      CAST(NULL AS FLOAT64)                                       AS tos,          -- Not stored in Iris
+      CAST(NULL AS FLOAT64)                                       AS gaplimit,     -- Not applicable
+      CAST(NULL AS FLOAT64)                                       AS wait_timeout, -- Not applicable
+      CAST(NULL AS FLOAT64)                                       AS wait_probe,   -- Not applicable
+      CAST(NULL AS FLOAT64)                                       AS probec,       -- TODO: Retrieve actual probe count from the measurement metadata.
+      CAST(NULL AS FLOAT64)                                       AS probec_max,   -- Not applicable
+      CAST(COUNT(*) AS FLOAT64)                                   AS nodec,
       (SELECT
-        COUNT(DISTINCT CONCAT(near_addr, '|', far_addr))
+        CAST(COUNT(DISTINCT CONCAT(near_addr, '|', far_addr)) AS FLOAT64)
         FROM links
         WHERE probe_protocol = lbn.probe_protocol
         AND probe_src_addr = lbn.probe_src_addr
@@ -230,7 +225,7 @@ SELECT
       ARRAY_AGG(STRUCT(
         GENERATE_UUID()                  AS hop_id,
         COALESCE(near_addr, '*')         AS addr,
-        NULL                             AS name,  -- Not applicable
+        CAST(NULL AS STRING)                             AS name,  -- Not applicable
         NULL                             AS q_ttl, -- Not applicable
         (SELECT
           COUNT(DISTINCT CONCAT(near_addr, '|', far_addr))
@@ -241,10 +236,18 @@ SELECT
           AND near_addr = lbn.near_addr) AS linkc,
         ARRAY(SELECT AS STRUCT Links)    AS links
       ))                                         AS nodes
-    ) AS Tracelb
+    ) AS Tracelb,
+STRUCT(
+      'cycle-stop'                            AS Type,
+      'default'                               AS list_name,
+      CAST(NULL AS FLOAT64)                                       AS ID,
+      '%s' AS Hostname,
+      CAST(UNIX_SECONDS(MAX(last_timestamp)) AS FLOAT64)       AS stop_time
+    ) AS CycleStop
+
   ) AS raw
 FROM links_by_node lbn
 GROUP BY probe_protocol, probe_src_addr, probe_dst_addr
-""", scamper1_table, table_name, table_name, hostname, hostname, version, user_id, tool, min_ttl, failure_probability);
+""", scamper1_table, table_name, table_name,  hostname, version, tool, min_ttl, failure_probability, hostname);
 EXECUTE IMMEDIATE
   convert_iris_to_scamper1;
