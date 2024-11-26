@@ -29,6 +29,7 @@ EOF
 main() {
 	local meas_uuid
 	local table_prefix
+        local scamper1_table
 
         parse_args "$@"
         echo "sourcing ${CONFIG_FILE}"
@@ -37,6 +38,17 @@ main() {
 
 	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
+
+	# create scamper1 table if it doesn't exist
+	scamper1_table="${BQ_DATASET}"."${BQ_TABLE}"
+	echo "scamper1 table: ${scamper1_table}"
+	if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${scamper1_table}" > /dev/null 2>&1; then
+        	echo "${scamper1_table} already exists"
+        else
+        	# create the scamper1 table with the schema file
+        	echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --table "${scamper1_table}"
+                "${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --table "${scamper1_table}"
+	fi
 
         echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
@@ -83,13 +95,13 @@ upload_tables() {
 			"${TIME}" bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_iris_table}" "${path}"
 		fi
 
-		# convert the iris table and create scamper1 table
-		echo creating scamper1 table from iris table
-		convert_and_create_scamper1 "${bq_iris_table}"
+		# convert the iris table and insert rows into scamper1 table
+		echo converting iris table and inserting into scamper1 table
+		convert_and_insert_scamper1 "${bq_iris_table}"
 	done
 }
 
-convert_and_create_scamper1() {
+convert_and_insert_scamper1() {
 	local bq_iris_table="$1"
 
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
@@ -98,7 +110,6 @@ convert_and_create_scamper1() {
 		--parameter="table_name_param:STRING:${bq_iris_table}" \
 		--parameter="host_param:STRING:asia-east1" \
 		--parameter="version_param:STRING:1.1.5" \
-		--parameter="user_id_param:STRING:8b891667-7d2c-4098-9f75-2b0379feb4e1" \
 		--parameter="tool_param:STRING:diamond-miner" \
 		--parameter="min_ttl_param:STRING:4" \
 		--parameter="failure_probability_param:STRING:0.05" \
