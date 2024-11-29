@@ -11,5 +11,4 @@
   { "name": "reply_icmp_type", "type": "INTEGER", "mode": "REQUIRED" },
   { "name": "reply_icmp_code", "type": "INTEGER", "mode": "REQUIRED" },
   { "name": "reply_ttl", "type": "INTEGER", "mode": "REQUIRED" },
-  { "name": "rtt", "type": "INTEGER", "mode": "REQUIRED" },
-]
+  { "name": "rtt", "type": "INTEGER", "mode": "REQUIRED" }]
