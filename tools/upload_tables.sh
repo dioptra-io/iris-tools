@@ -70,8 +70,10 @@ upload_tables() {
 	local path
 	local files=()
 	local bq_iris_table
+        local clustering
 
 	files=("${EXPORT_DIR}"/*."${EXPORT_FORMAT}")
+        clustering="probe_dst_addr,probe_src_port,probe_ttl,reply_src_addr"
 	if [[ ${#files[@]} -eq 0 ]]; then
 		echo "no ${EXPORT_FORMAT} files in ${EXPORT_DIR}"
 		return
@@ -87,8 +89,8 @@ upload_tables() {
 			# XXX Add logic to avoid converting measurements twice.
 		else
 			# create the table with the schema file
-			echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}" --table "${bq_iris_table}"
-			"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}" --table "${bq_iris_table}"
+			echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}" --clustering_fields="${clustering}" --table "${bq_iris_table}"
+			"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}"  --clustering_fields="${clustering}" --table "${bq_iris_table}"
 
 			# upload values into the iris table
 			echo bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_iris_table}" "${path}"
@@ -103,7 +105,7 @@ upload_tables() {
 
 convert_and_insert_scamper1() {
 	local bq_iris_table="$1"
-        echo "${bq_iris_table#*__}"
+
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
 		--parameter="scamper1_table_name_param:STRING:${BQ_DATASET}.${BQ_TABLE}" \
