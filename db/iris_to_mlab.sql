@@ -8,6 +8,8 @@
 DECLARE
   scamper1_table STRING DEFAULT @scamper1_table_name_param;
 DECLARE
+  measurement_agent STRING DEFAULT @measurement_agent_param;
+DECLARE
   table_name STRING DEFAULT @table_name_param;
 DECLARE
   hostname STRING DEFAULT @host_param;
@@ -50,7 +52,7 @@ results_with_replies_count AS (
    SELECT
        probe_protocol,
        format_addr(probe_src_addr)  AS probe_src_addr,
-       format_addr(probe_dst_addr)  AS probe_dst_addr,
+       format_addr(probe_dst_addr)  AS formatted_probe_dst_addr,
        probe_src_port,
        probe_dst_port,
        probe_ttl,
@@ -62,7 +64,9 @@ results_with_replies_count AS (
        (ARRAY_AGG(quoted_ttl ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)]   AS quoted_ttl,
        (ARRAY_AGG(capture_timestamp ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS capture_timestamp,
        (ARRAY_AGG(rtt ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)]          AS rtt,
-       COUNT(*) AS reply_count
+       COUNT(*) AS reply_count,
+       -- SHA256 calculation for id
+       TO_HEX(SHA256(CONCAT('%s', probe_dst_addr)))					       AS id
    FROM
        `%s`
    GROUP BY
@@ -81,7 +85,7 @@ links AS (
    SELECT
        near.probe_protocol,
        near.probe_src_addr,
-       near.probe_dst_addr,
+       near.formatted_probe_dst_addr AS probe_dst_addr,
        near.probe_src_port,
        near.probe_dst_port,
        near.reply_src_addr   AS near_addr,
@@ -93,17 +97,24 @@ links AS (
        far.quoted_ttl        AS quoted_ttl,
        far.capture_timestamp AS capture_timestamp,
        far.rtt               AS rtt,
-       far.reply_count       AS reply_count
+       far.reply_count       AS reply_count,
+       near.id AS id  -- Propagate 'id' directly from 'results_with_replies_count'
    FROM
        results_with_replies_count near
    INNER JOIN
        results_with_replies_count far ON
            near.probe_protocol = far.probe_protocol AND
            near.probe_src_addr = far.probe_src_addr AND
-           near.probe_dst_addr = far.probe_dst_addr AND
+           near.formatted_probe_dst_addr = far.formatted_probe_dst_addr AND
            near.probe_src_port = far.probe_src_port AND
            near.probe_dst_port = far.probe_dst_port AND
            near.probe_ttl = far.probe_ttl - 1
+  -- Filter out rows where the id already exists in scamper1 table to avoid duplicates
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM `%s` scamper1
+        WHERE scamper1.id = near.id
+    )
 ),
 
 links_by_node AS (
@@ -145,13 +156,14 @@ links_by_node AS (
                     ] AS Replies
                 )
             ] AS Probes
-        )) AS Links
+        )) AS Links,
+        (ARRAY_AGG(id ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS id,  -- Propagate id from the previous CTE
     FROM links
-    GROUP BY 1, 2, 3, 4
+    GROUP BY probe_protocol, probe_src_addr, probe_dst_addr, near_addr
 )
 
 SELECT
-    '' AS id,
+    (ARRAY_AGG(id ORDER BY first_timestamp LIMIT 1))[OFFSET(0)] AS id,  -- Propagate id from the previous CTE
     STRUCT(
         CAST(NULL AS STRING) AS Version,
         CURRENT_TIMESTAMP() AS Time,
@@ -227,6 +239,6 @@ SELECT
     ) AS raw
 FROM links_by_node lbn
 GROUP BY probe_protocol, probe_src_addr, probe_dst_addr
-""", scamper1_table, table_name,  hostname, version, tool, min_ttl, failure_probability, hostname);
+""", scamper1_table, measurement_agent, table_name, scamper1_table, hostname, version, tool, min_ttl, failure_probability, hostname);
 EXECUTE IMMEDIATE
   convert_iris_to_scamper1;

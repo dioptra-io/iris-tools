@@ -46,8 +46,8 @@ main() {
         	echo "${scamper1_table} already exists"
         else
         	# create the scamper1 table with the schema file
-        	echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --table "${scamper1_table}"
-                "${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --table "${scamper1_table}"
+        	echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${scamper1_table}"
+                "${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${scamper1_table}"
 	fi
 
         echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
@@ -103,11 +103,12 @@ upload_tables() {
 
 convert_and_insert_scamper1() {
 	local bq_iris_table="$1"
-
+        echo "${bq_iris_table#*__}"
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
 		--parameter="scamper1_table_name_param:STRING:${BQ_DATASET}.${BQ_TABLE}" \
 		--parameter="table_name_param:STRING:${bq_iris_table}" \
+		--parameter="measurement_agent_param:STRING:${bq_iris_table#*__}" \
 		--parameter="host_param:STRING:asia-east1" \
 		--parameter="version_param:STRING:1.1.5" \
 		--parameter="tool_param:STRING:diamond-miner" \
