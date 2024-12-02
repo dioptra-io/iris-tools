@@ -65,7 +65,7 @@ results_with_replies_count AS (
        (ARRAY_AGG(capture_timestamp ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS capture_timestamp,
        (ARRAY_AGG(rtt ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)]          AS rtt,
        COUNT(*) AS reply_count,
-       -- SHA256 calculation for id
+       -- SHA256 calculation for id, placeholder is measurement_agent
        TO_HEX(SHA256(CONCAT('%s', probe_dst_addr)))					       AS id
    FROM
        `%s`
