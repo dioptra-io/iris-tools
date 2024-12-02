@@ -43,89 +43,71 @@ CREATE TEMP FUNCTION
 SET
   convert_iris_to_scamper1 = FORMAT("""
 INSERT INTO `%s` -- scamper1 table
-WITH 
--- This CTE counts the number of replies for each unique combination of probe parameters.
-replies_count AS (
-    SELECT 
-        probe_protocol,
-        probe_src_addr,
-        probe_dst_addr,
-        probe_src_port,
-        probe_dst_port,
-        probe_ttl,
-        reply_src_addr,
-        COUNT(*) AS reply_count  -- Count the number of replies for the specified group
-    FROM `%s`  -- Input Table containing all original results
-    GROUP BY 
-        probe_protocol,
-        probe_src_addr,
-        probe_dst_addr,
-        probe_src_port,
-        probe_dst_port,
-        probe_ttl,
-        reply_src_addr  -- Grouping by all relevant fields to get distinct reply counts
-),
-
--- This CTE adds the reply count to the original results while formatting addresses for easier reading.
+WITH
+-- This CTE aggregates and summarizes network probe results, selecting the first reply for each unique probe 
+-- and calculating the total number of replies
 results_with_replies_count AS (
-    SELECT 
-        results.*,
-        reply_count,  -- Include the reply count calculated in the previous CTE
-        format_addr(results.probe_src_addr) AS formatted_probe_src_addr,
-        format_addr(results.probe_dst_addr) AS formatted_probe_dst_addr,
-        format_addr(results.reply_src_addr) AS formatted_reply_src_addr
-    FROM `%s` AS results  -- Input table containing all original results
-    LEFT JOIN replies_count replies
-        ON results.probe_protocol  = replies.probe_protocol
-        AND results.probe_src_addr = replies.probe_src_addr
-        AND results.probe_dst_addr = replies.probe_dst_addr
-        AND results.probe_src_port = replies.probe_src_port
-        AND results.probe_dst_port = replies.probe_dst_port
-        AND results.probe_ttl      = replies.probe_ttl
-        AND results.reply_src_addr = replies.reply_src_addr
+   SELECT
+       probe_protocol,
+       format_addr(probe_src_addr)  AS probe_src_addr,
+       format_addr(probe_dst_addr)  AS probe_dst_addr,
+       probe_src_port,
+       probe_dst_port,
+       probe_ttl,
+       format_addr(reply_src_addr)  AS reply_src_addr,
+       -- First reply values based on capture timestamp
+       (ARRAY_AGG(reply_ttl ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)]    AS reply_ttl,
+       (ARRAY_AGG(reply_icmp_type ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS reply_icmp_type,
+       (ARRAY_AGG(reply_icmp_code ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS reply_icmp_code,
+       (ARRAY_AGG(quoted_ttl ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)]   AS quoted_ttl,
+       (ARRAY_AGG(capture_timestamp ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS capture_timestamp,
+       (ARRAY_AGG(rtt ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)]          AS rtt,
+       COUNT(*) AS reply_count
+   FROM
+       `%s`
+   GROUP BY
+       probe_protocol,
+       probe_src_addr,
+       probe_dst_addr,
+       probe_src_port,
+       probe_dst_port,
+       probe_ttl,
+       reply_src_addr
 ),
 
 -- This CTE establishes the links between probes and their corresponding replies,
 -- aggregating results as needed to manage probes with amplification.
 links AS (
-    SELECT 
-        near.probe_protocol,
-        near.formatted_probe_src_addr AS probe_src_addr,
-        near.formatted_probe_dst_addr AS probe_dst_addr,
-        near.probe_src_port,
-        near.probe_dst_port,
-        near.formatted_reply_src_addr AS near_addr,
-        far.formatted_reply_src_addr AS far_addr,
-        far.probe_ttl AS probe_ttl,
-        -- Use ARRAY_AGG with ORDER BY and LIMIT 1 to get the first reply value based on the capture timestamp
-        (ARRAY_AGG(far.reply_ttl ORDER BY far.capture_timestamp LIMIT 1))[OFFSET(0)] AS reply_ttl,
-        (ARRAY_AGG(far.reply_icmp_type ORDER BY far.capture_timestamp LIMIT 1))[OFFSET(0)] AS reply_icmp_type,
-        (ARRAY_AGG(far.reply_icmp_code ORDER BY far.capture_timestamp LIMIT 1))[OFFSET(0)] AS reply_icmp_code,
-        (ARRAY_AGG(far.quoted_ttl ORDER BY far.capture_timestamp LIMIT 1))[OFFSET(0)] AS quoted_ttl,
-        (ARRAY_AGG(far.capture_timestamp ORDER BY far.capture_timestamp LIMIT 1))[OFFSET(0)] AS capture_timestamp,
-        (ARRAY_AGG(far.rtt ORDER BY far.capture_timestamp LIMIT 1))[OFFSET(0)] AS rtt,
-        MIN(far.reply_count) AS reply_count
-    FROM results_with_replies_count near
-    INNER JOIN results_with_replies_count far
-        ON near.probe_protocol             = far.probe_protocol
-        AND near.formatted_probe_src_addr = far.formatted_probe_src_addr
-        AND near.formatted_probe_dst_addr = far.formatted_probe_dst_addr
-        AND near.probe_src_port           = far.probe_src_port
-        AND near.probe_dst_port           = far.probe_dst_port
-        AND near.probe_ttl                = far.probe_ttl - 1
-    GROUP BY 
-        probe_protocol,
-        probe_src_addr,
-        probe_dst_addr,
-        probe_src_port,
-        probe_dst_port,
-        near_addr,
-        far_addr,
-        probe_ttl
+   SELECT
+       near.probe_protocol,
+       near.probe_src_addr,
+       near.probe_dst_addr,
+       near.probe_src_port,
+       near.probe_dst_port,
+       near.reply_src_addr   AS near_addr,
+       far.reply_src_addr    AS far_addr,
+       far.reply_ttl         AS reply_ttl,
+       far.reply_icmp_type   AS reply_icmp_type,
+       far.reply_icmp_code   AS reply_icmp_code,
+       far.probe_ttl         AS probe_ttl,
+       far.quoted_ttl        AS quoted_ttl,
+       far.capture_timestamp AS capture_timestamp,
+       far.rtt               AS rtt,
+       far.reply_count       AS reply_count
+   FROM
+       results_with_replies_count near
+   INNER JOIN
+       results_with_replies_count far ON
+           near.probe_protocol = far.probe_protocol AND
+           near.probe_src_addr = far.probe_src_addr AND
+           near.probe_dst_addr = far.probe_dst_addr AND
+           near.probe_src_port = far.probe_src_port AND
+           near.probe_dst_port = far.probe_dst_port AND
+           near.probe_ttl = far.probe_ttl - 1
 ),
 
 links_by_node AS (
-    SELECT 
+    SELECT
         probe_protocol,
         probe_src_addr,
         probe_dst_addr,
@@ -144,8 +126,8 @@ links_by_node AS (
                     probe_ttl AS TTL,
                     1 AS Attempt,  -- Our current tools only do a single attempt.
                     CASE
-                        WHEN probe_src_port > 24000 THEN probe_src_port  
-                        ELSE CAST(SPLIT(probe_dst_addr, '.')[OFFSET(3)] AS INT64)  
+                        WHEN probe_src_port > 24000 THEN probe_src_port
+                        ELSE CAST(SPLIT(probe_dst_addr, '.')[OFFSET(3)] AS INT64)
                     END AS Flowid,
                     [
                         STRUCT(
@@ -168,7 +150,7 @@ links_by_node AS (
     GROUP BY 1, 2, 3, 4
 )
 
-SELECT 
+SELECT
     '' AS id,
     STRUCT(
         CAST(NULL AS STRING) AS Version,
@@ -245,6 +227,6 @@ SELECT
     ) AS raw
 FROM links_by_node lbn
 GROUP BY probe_protocol, probe_src_addr, probe_dst_addr
-""", scamper1_table, table_name, table_name,  hostname, version, tool, min_ttl, failure_probability, hostname);
+""", scamper1_table, table_name,  hostname, version, tool, min_ttl, failure_probability, hostname);
 EXECUTE IMMEDIATE
   convert_iris_to_scamper1;
