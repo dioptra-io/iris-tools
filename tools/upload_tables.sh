@@ -12,68 +12,73 @@ POSITIONAL_ARGS=()
 
 
 usage() {
-        local exit_code="$1"
+	local exit_code="$1"
 
-        cat <<EOF
+	cat <<EOF
 usage:
-        ${PROG_NAME} [-hf] [-c <config>] <uuid>...
-        -h, --help      print help message and exit
-        -f, --force     upload tables even if they already exist in BigQuery
-        -c, --config    configuration file (default ${CONFIG_FILE})
+	${PROG_NAME} [-hf] [-c <config>] <uuid>...
+	-h, --help      print help message and exit
+	-f, --force     upload tables even if they already exist in BigQuery
+	-c, --config    configuration file (default ${CONFIG_FILE})
 
-        uuid: measurement uuid
+	uuid: measurement uuid
 EOF
-        exit "${exit_code}"
+	exit "${exit_code}"
 }
 
 main() {
+	local bq_table
+	local meas_md_tmpfile
 	local meas_uuid
 	local table_prefix
-        local scamper1_table
 
-        parse_args "$@"
-        echo "sourcing ${CONFIG_FILE}"
-        # shellcheck disable=SC1090
-        source "${CONFIG_FILE}"
-
+	parse_args "$@"
+	echo "sourcing ${CONFIG_FILE}"
+	# shellcheck disable=SC1090
+	source "${CONFIG_FILE}"
 	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
 
-	# create scamper1 table if it doesn't exist
-	scamper1_table="${BQ_DATASET}"."${BQ_TABLE}"
-	echo "scamper1 table: ${scamper1_table}"
-	if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${scamper1_table}" > /dev/null 2>&1; then
-        	echo "${scamper1_table} already exists"
-        else
-        	# create the scamper1 table with the schema file
-        	echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${scamper1_table}"
-                "${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${scamper1_table}"
+	# create the table for inserting measurement data if it doesn't exist
+	bq_table="${BQ_DATASET}"."${BQ_TABLE}"
+	if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_table}" > /dev/null 2>&1; then
+		echo "${bq_table} already exists"
+	else
+		# create the $BQ_TABLE table with the schema file
+		echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${bq_table}"
+		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${bq_table}"
 	fi
 
-        echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
+	echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
+	meas_md_tmpfile="$(mktemp /tmp/upload_tables.XXXX)"
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
+		# first get the metadata of this measurement
+		irisctl meas --uuid "${meas_uuid}" -o > "${meas_md_tmpfile}"
+		# now upload this measurement's tables
 		for table_prefix in "${TABLES_TO_UPLOAD[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
 				echo "do not have query for uploading ${table_prefix} tables"
 				return 1
 			fi
 			echo uploading "${meas_uuid}" "${table_prefix}" tables
-			upload_tables "${meas_uuid}" "${table_prefix}"
+			upload_tables "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"
 			echo
 		done
 	done
+	rm -f "${meas_md_tmpfile}"
 }
 
 upload_tables() {
-        local meas_uuid="$1"
-        local table_prefix="$2"
+	local meas_uuid="$1"
+	local meas_md_tmpfile="$2"
+	local table_prefix="$3"
 	local path
 	local files=()
 	local bq_iris_table
-        local clustering
+	local clustering
 
 	files=("${EXPORT_DIR}"/*."${EXPORT_FORMAT}")
-        clustering="probe_dst_addr,probe_src_port,probe_ttl,reply_src_addr"
+	clustering="probe_dst_addr,probe_src_port,probe_ttl,reply_src_addr"
 	if [[ ${#files[@]} -eq 0 ]]; then
 		echo "no ${EXPORT_FORMAT} files in ${EXPORT_DIR}"
 		return
@@ -86,7 +91,6 @@ upload_tables() {
 		echo bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}"
 		if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}" > /dev/null 2>&1; then
 			echo "${bq_iris_table} already uploaded"
-			# XXX Add logic to avoid converting measurements twice.
 		else
 			# create the table with the schema file
 			echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}" --clustering_fields="${clustering}" --table "${bq_iris_table}"
@@ -97,56 +101,87 @@ upload_tables() {
 			"${TIME}" bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_iris_table}" "${path}"
 		fi
 
-		# convert the iris table and insert rows into scamper1 table
-		echo converting iris table and inserting into scamper1 table
-		convert_and_insert_scamper1 "${bq_iris_table}"
+		# convert the iris table and insert rows into $BQ_TABLE table
+		echo converting iris table and inserting into "$BQ_TABLE" table
+		convert_and_insert_values "${meas_uuid}" "${meas_md_tmpfile}" "${bq_iris_table}"
 	done
 }
 
-convert_and_insert_scamper1() {
-	local bq_iris_table="$1"
+convert_and_insert_values() {
+	local meas_uuid="$1"
+	local meas_md_tmpfile="$2"
+	local bq_iris_table="$3"
+	local agent
+	local index
+	local tool
+	local md_fields
+	local MD_FIELDS=()
+
+	# get the metadata of this measurement
+	agent="$(echo "${bq_iris_table}" | sed -e 's/.*__\(........_...._...._...._............\)/\1/' | tr '_' '-')"
+	index="$(jq --arg agent "$agent" '[.agents[].agent_uuid] | index($agent)' "${meas_md_tmpfile}")"
+	tool="$(jq -r .tool "${meas_md_tmpfile}")"
+	# sanity check
+	if [[ "${tool}" != "diamond-miner" && "${tool}" != "yarrp" ]]; then
+		echo "error: invalid tool: ${tool}"
+		return 1
+	fi
+	# order of these fields should match --parameter lines in the bq command below
+	MD_FIELDS=(
+	    .agent_parameters.hostname
+	    .agent_parameters.version
+	    .agent_parameters.min_ttl
+	    .tool_parameters.failure_probability
+	)
+	md_fields="$(IFS=,; echo "${MD_FIELDS[*]}")"
+	read -r -a MD_VALUES <<< "$(jq -r ".agents[${index}] | [${md_fields}] | @tsv" "${meas_md_tmpfile}")"
+	# sanity check
+	if [[ ${#MD_VALUES[@]} -ne ${#MD_FIELDS[@]} ]]; then
+		echo "error: expected to parse ${#MD_FIELDS[@]} values, got ${#MD_VALUES[@]} values"
+		return 1
+	fi
 
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
 		--parameter="scamper1_table_name_param:STRING:${BQ_DATASET}.${BQ_TABLE}" \
 		--parameter="table_name_param:STRING:${bq_iris_table}" \
 		--parameter="measurement_agent_param:STRING:${bq_iris_table#*__}" \
-		--parameter="host_param:STRING:asia-east1" \
-		--parameter="version_param:STRING:1.1.5" \
-		--parameter="tool_param:STRING:diamond-miner" \
-		--parameter="min_ttl_param:STRING:4" \
-		--parameter="failure_probability_param:STRING:0.05" \
+		--parameter="tool_param:STRING:${tool}" \
+		--parameter="host_param:STRING:${MD_VALUES[0]}" \
+		--parameter="version_param:STRING:${MD_VALUES[1]}" \
+		--parameter="min_ttl_param:STRING:${MD_VALUES[2]}" \
+		--parameter="failure_probability_param:STRING:${MD_VALUES[3]}" \
 		< "${TABLE_CONVERSION_QUERY}"
 }
 
 parse_args() {
-        local args
-        local arg
+	local args
+	local arg
 
-        if ! args="$(getopt \
-                        --options "c:fh" \
-                        --longoptions "config: force help" \
-                        -- "$@")"; then
-                usage 1
-        fi
-        eval set -- "${args}"
+	if ! args="$(getopt \
+			--options "c:fh" \
+			--longoptions "config: force help" \
+			-- "$@")"; then
+		usage 1
+	fi
+	eval set -- "${args}"
 
-        while :; do
-                arg="$1"
-                shift
-                case "${arg}" in
-                -c|--config) CONFIG_FILE="$1"; shift 1;;
-                -f|--force) FORCE=true;;
-                -h|--help) usage 0;;
-                --) break;;
-                *) echo "internal error parsing arg=${arg}"; usage 1;;
-                esac
-        done
+	while :; do
+		arg="$1"
+		shift
+		case "${arg}" in
+		-c|--config) CONFIG_FILE="$1"; shift 1;;
+		-f|--force) FORCE=true;;
+		-h|--help) usage 0;;
+		--) break;;
+		*) echo "internal error parsing arg=${arg}"; usage 1;;
+		esac
+	done
 
-        if [[ "$#" -eq 0 ]]; then
-                echo "${PROG_NAME}: specify at least one measurement uuid"
-                usage 1
-        fi
+	if [[ "$#" -eq 0 ]]; then
+		echo "${PROG_NAME}: specify at least one measurement uuid"
+		usage 1
+	fi
 	POSITIONAL_ARGS=("$@")
 }
 
