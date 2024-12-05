@@ -183,31 +183,31 @@ SELECT
         STRUCT(
             'cycle-start' AS Type,
             'default' AS list_name,
-            CAST(NULL AS FLOAT64) AS ID,
+            CAST(NULL AS INT64) AS ID,
             '%s' AS Hostname,
-            CAST(UNIX_SECONDS(MIN(last_timestamp)) AS FLOAT64) AS start_time
+            UNIX_SECONDS(MIN(last_timestamp)) AS start_time
         ) AS CycleStart,
         STRUCT(
             'tracelb' AS type,
             '%s' AS version,
-            CAST(NULL AS FLOAT64) AS userid,
+            CAST(NULL AS INT64) AS userid,
             '%s' AS method,
             probe_src_addr AS src,
             probe_dst_addr AS dst,
             make_timestamp(MIN(first_timestamp)) AS start,
-            CAST(NULL AS FLOAT64) AS probe_size,  -- Not stored in Iris
-            CAST('%s' AS FLOAT64) AS firsthop,
-            1.0 AS attempts,  -- Our current tools always send a single probe.
-            1.0 - CAST('%s' AS FLOAT64) AS confidence,
-            CAST(NULL AS FLOAT64) AS tos,  -- Not stored in Iris
-            CAST(NULL AS FLOAT64) AS gaplimit,  -- Not applicable
-            CAST(NULL AS FLOAT64) AS wait_timeout,  -- Not applicable
-            CAST(NULL AS FLOAT64) AS wait_probe,  -- Not applicable
-            CAST(NULL AS FLOAT64) AS probec,  -- TODO: Retrieve actual probe count from the measurement metadata.
-            CAST(NULL AS FLOAT64) AS probec_max,  -- Not applicable
-            CAST(COUNT(*) AS FLOAT64) AS nodec,
+            CAST(NULL AS INT64) AS probe_size,  -- Not stored in Iris
+            CAST('%s' AS INT64) AS firsthop,
+            1 AS attempts,  -- Our current tools always send a single probe.
+            100 - CAST(CAST('%s' AS FLOAT64)*100 AS INT64) AS confidence,
+            CAST(NULL AS INT64) AS tos,  -- Not stored in Iris
+            CAST(NULL AS INT64) AS gaplimit,  -- Not applicable
+            CAST(NULL AS INT64) AS wait_timeout,  -- Not applicable
+            CAST(NULL AS INT64) AS wait_probe,  -- Not applicable
+            CAST(NULL AS INT64) AS probec,  -- TODO: Retrieve actual probe count from the measurement metadata.
+            CAST(NULL AS INT64) AS probec_max,  -- Not applicable
+            COUNT(*)              AS nodec,
             (
-                SELECT CAST(COUNT(DISTINCT CONCAT(near_addr, '|', far_addr)) AS FLOAT64)
+                SELECT COUNT(DISTINCT CONCAT(near_addr, '|', far_addr))
                 FROM links
                 WHERE probe_protocol = lbn.probe_protocol
                   AND probe_src_addr = lbn.probe_src_addr
@@ -232,9 +232,9 @@ SELECT
         STRUCT(
             'cycle-stop' AS Type,
             'default' AS list_name,
-            CAST(NULL AS FLOAT64) AS ID,
+            CAST(NULL AS INT64) AS ID,
             '%s' AS Hostname,
-            CAST(UNIX_SECONDS(MAX(last_timestamp)) AS FLOAT64) AS stop_time
+            UNIX_SECONDS(MAX(last_timestamp)) AS stop_time
         ) AS CycleStop
     ) AS raw
 FROM links_by_node lbn

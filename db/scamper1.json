@@ -28,9 +28,9 @@
       { "fields": [
           { "mode": "NULLABLE", "name": "Type", "type": "STRING" },
           { "mode": "NULLABLE", "name": "list_name", "type": "STRING" },
-          { "mode": "NULLABLE", "name": "ID", "type": "FLOAT" },
+          { "mode": "NULLABLE", "name": "ID", "type": "INTEGER" },
           { "mode": "NULLABLE", "name": "Hostname", "type": "STRING" },
-          { "mode": "NULLABLE", "name": "start_time", "type": "FLOAT" }
+          { "mode": "NULLABLE", "name": "start_time", "type": "INTEGER" }
         ],
         "mode": "NULLABLE",
         "name": "CycleStart",
@@ -39,7 +39,7 @@
       { "fields": [
           { "mode": "NULLABLE", "name": "type", "type": "STRING" },
           { "mode": "NULLABLE", "name": "version", "type": "STRING" },
-          { "mode": "NULLABLE", "name": "userid", "type": "FLOAT" },
+          { "mode": "NULLABLE", "name": "userid", "type": "INTEGER" },
           { "mode": "NULLABLE", "name": "method", "type": "STRING" },
           { "mode": "NULLABLE", "name": "src", "type": "STRING" },
           { "mode": "NULLABLE", "name": "dst", "type": "STRING" },
@@ -51,18 +51,18 @@
             "name": "start",
             "type": "RECORD"
           },
-          { "mode": "NULLABLE", "name": "probe_size", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "firsthop", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "attempts", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "confidence", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "tos", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "gaplimit", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "wait_timeout", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "wait_probe", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "probec", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "probec_max", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "nodec", "type": "FLOAT" },
-          { "mode": "NULLABLE", "name": "linkc", "type": "FLOAT" },
+          { "mode": "NULLABLE", "name": "probe_size", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "firsthop", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "attempts", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "confidence", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "tos", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "gaplimit", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "wait_timeout", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "wait_probe", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "probec", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "probec_max", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "nodec", "type": "INTEGER" },
+          { "mode": "NULLABLE", "name": "linkc", "type": "INTEGER" },
           { "fields": [
               { "mode": "NULLABLE", "name": "hop_id", "type": "STRING" },
               { "mode": "NULLABLE", "name": "addr", "type": "STRING" },
@@ -133,9 +133,9 @@
       { "fields": [
           { "mode": "NULLABLE", "name": "Type", "type": "STRING" },
           { "mode": "NULLABLE", "name": "list_name", "type": "STRING" },
-          { "mode": "NULLABLE", "name": "ID", "type": "FLOAT" },
+          { "mode": "NULLABLE", "name": "ID", "type": "INTEGER" },
           { "mode": "NULLABLE", "name": "Hostname", "type": "STRING" },
-          { "mode": "NULLABLE", "name": "stop_time", "type": "FLOAT" }
+          { "mode": "NULLABLE", "name": "stop_time", "type": "INTEGER" }
         ],
         "mode": "NULLABLE",
         "name": "CycleStop",
