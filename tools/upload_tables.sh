@@ -27,7 +27,7 @@ EOF
 }
 
 main() {
-	local bq_table
+	local bq_dataset_table
 	local meas_md_tmpfile
 	local meas_uuid
 	local table_prefix
@@ -40,13 +40,13 @@ main() {
 	source "${IRIS_ENV}"
 
 	# create the table for inserting measurement data if it doesn't exist
-	bq_table="${BQ_DATASET}"."${BQ_TABLE}"
-	if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_table}" > /dev/null 2>&1; then
-		echo "${bq_table} already exists"
+	bq_dataset_table="${BQ_DATASET}"."${BQ_TABLE}"
+	if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_dataset_table}" > /dev/null 2>&1; then
+		echo "${bq_dataset_table} already exists"
 	else
 		# create the $BQ_TABLE table with the schema file
-		echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${bq_table}"
-		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${bq_table}"
+		echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${bq_dataset_table}"
+		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${bq_dataset_table}"
 	fi
 
 	echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
@@ -74,7 +74,7 @@ upload_tables() {
 	local table_prefix="$3"
 	local path
 	local files=()
-	local bq_iris_table
+	local bq_tmp_table
 	local clustering
 
 	files=("${EXPORT_DIR}"/*."${EXPORT_FORMAT}")
@@ -86,31 +86,30 @@ upload_tables() {
 	echo "${SCHEMA_RESULTS}" > "${SCHEMA_RESULTS_JSON}"
 	for path in "${EXPORT_DIR}"/*"${meas_uuid//-/_}"*."${EXPORT_FORMAT}"; do
 		filename="${path##*/}" # remove everything up to the last slash
-		bq_iris_table="${BQ_DATASET}.${filename%.${EXPORT_FORMAT}}"
+		bq_tmp_table="${BQ_DATASET}.${filename%.${EXPORT_FORMAT}}"
 		# Check if the iris table is already uploaded.
-		echo bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}"
-		if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_iris_table}" > /dev/null 2>&1; then
-			echo "${bq_iris_table} already uploaded"
+		echo bq show --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}"
+		if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}" > /dev/null 2>&1; then
+			echo "${bq_tmp_table} already uploaded"
 		else
-			# create the table with the schema file
-			echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}" --clustering_fields="${clustering}" --table "${bq_iris_table}"
-			"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}"  --clustering_fields="${clustering}" --table "${bq_iris_table}"
+			# create the temporary table with the schema file
+			echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}" --clustering_fields="${clustering}" --table "${bq_tmp_table}"
+			"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}"  --clustering_fields="${clustering}" --table "${bq_tmp_table}"
 
-			# upload values into the iris table
-			echo bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_iris_table}" "${path}"
-			"${TIME}" bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_iris_table}" "${path}"
+			# upload values into the temporary table
+			echo bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_tmp_table}" "${path}"
+			"${TIME}" bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_tmp_table}" "${path}"
 		fi
 
-		# convert the iris table and insert rows into $BQ_TABLE table
-		echo converting iris table and inserting into "$BQ_TABLE" table
-		convert_and_insert_values "${meas_uuid}" "${meas_md_tmpfile}" "${bq_iris_table}"
+		echo building rows from the temporary table and inserting them into "$BQ_TABLE"
+		convert_and_insert_values "${meas_uuid}" "${meas_md_tmpfile}" "${bq_tmp_table}"
 	done
 }
 
 convert_and_insert_values() {
 	local meas_uuid="$1"
 	local meas_md_tmpfile="$2"
-	local bq_iris_table="$3"
+	local bq_tmp_table="$3"
 	local agent
 	local index
 	local tool
@@ -118,8 +117,16 @@ convert_and_insert_values() {
 	local MD_FIELDS=()
 
 	# get the metadata of this measurement
-	agent="$(echo "${bq_iris_table}" | sed -e 's/.*__\(........_...._...._...._............\)/\1/' | tr '_' '-')"
+	agent="$(echo "${bq_tmp_table}" | sed -e 's/.*__\(........_...._...._...._............\)/\1/' | tr '_' '-')"
 	index="$(jq --arg agent "$agent" '[.agents[].agent_uuid] | index($agent)' "${meas_md_tmpfile}")"
+	# sanity check
+	for v in agent index; do
+		if [[ "${!v}" == "" ]]; then
+			echo "error: failed to parse ${v}"
+			return 1
+		fi
+	done
+
 	tool="$(jq -r .tool "${meas_md_tmpfile}")"
 	# sanity check
 	if [[ "${tool}" != "diamond-miner" && "${tool}" != "yarrp" ]]; then
@@ -144,8 +151,8 @@ convert_and_insert_values() {
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
 		--parameter="scamper1_table_name_param:STRING:${BQ_DATASET}.${BQ_TABLE}" \
-		--parameter="table_name_param:STRING:${bq_iris_table}" \
-		--parameter="measurement_agent_param:STRING:${bq_iris_table#*__}" \
+		--parameter="table_name_param:STRING:${bq_tmp_table}" \
+		--parameter="measurement_agent_param:STRING:${bq_tmp_table#*__}" \
 		--parameter="tool_param:STRING:${tool}" \
 		--parameter="host_param:STRING:${MD_VALUES[0]}" \
 		--parameter="version_param:STRING:${MD_VALUES[1]}" \
