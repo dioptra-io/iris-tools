@@ -8,7 +8,6 @@ readonly PROG_NAME="${0##*/}"
 CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
 FORCE=false # --force
 DO_SELECT=false # select
-DO_CLEAN=false # clean
 DO_EXPORT=false # export
 DO_UPLOAD=false # upload
 
@@ -23,7 +22,7 @@ usage:
 	-f, --force     recreate and/or redo operations even if already done
 	-c, --config    configuration file (default ${CONFIG_FILE})
 
-	command: select, clean, export, upload, publish
+	command: select, export, upload, publish
 EOF
 	exit "${exit_code}"
 }
@@ -42,14 +41,10 @@ main() {
 	if ${FORCE}; then
 		flags+=(-f)
 	fi
-
 	if ${DO_SELECT}; then
 		"${SELECT_MEASUREMENTS}" "${flags[@]}"
 	fi
 	while read -r uuid; do
-		if ${DO_CLEAN}; then
-			"${CLEAN_TABLES}" "${flags[@]}" "${uuid}"
-		fi
 		if ${DO_EXPORT}; then
 			"${EXPORT_TABLES}" "${flags[@]}" "${uuid}"
 		fi
@@ -92,10 +87,9 @@ parse_args() {
 	for arg in "$@"; do
 		case "${arg}" in
 		select) DO_SELECT=true;;
-		clean) DO_CLEAN=true;;
 		export) DO_EXPORT=true;;
 		upload) DO_UPLOAD=true;;
-		publish) DO_SELECT=true; DO_CLEAN=true; DO_EXPORT=true; DO_UPLOAD=true;;
+		publish) DO_SELECT=true; DO_EXPORT=true; DO_UPLOAD=true;;
 		*) echo "${arg}: invalid argument"; usage 1;;
 		esac
 	done
