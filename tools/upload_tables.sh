@@ -27,6 +27,8 @@ EOF
 }
 
 main() {
+        local bq_public_dataset
+	local bq_private_dataset
 	local bq_dataset_table
 	local meas_md_tmpfile
 	local meas_uuid
@@ -39,8 +41,20 @@ main() {
 	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
 
-	# create the table for inserting measurement data if it doesn't exist
-	bq_dataset_table="${BQ_DATASET}"."${BQ_TABLE}"
+	# create the dataset for inserting measurement data in scamper1 format if it doesn't exist
+        # shellcheck disable=SC2153
+	bq_public_dataset="${BQ_PUBLIC_DATASET}"
+	echo verifying "${bq_public_dataset}"
+	verify_dataset "${bq_public_dataset}"
+
+	# create the dataset for uploading temporary iris tables  if it doesn't exist
+        # shellcheck disable=SC2153
+	bq_private_dataset="${BQ_PRIVATE_DATASET}"
+        echo verifying "${bq_private_dataset}"
+        verify_dataset "${bq_private_dataset}"
+
+	# create the table for inserting measurement data in scamper1 format  if it doesn't exist
+	bq_dataset_table="${BQ_PUBLIC_DATASET}"."${BQ_TABLE}"
 	if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_dataset_table}" > /dev/null 2>&1; then
 		echo "${bq_dataset_table} already exists"
 	else
@@ -68,6 +82,19 @@ main() {
 	rm -f "${meas_md_tmpfile}"
 }
 
+verify_dataset() {
+        local dataset="$1"
+
+	# check if dataset exists
+        if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${dataset}" > /dev/null 2>&1; then
+                echo "${dataset} already exists"
+        else
+                # create the dataset
+                echo bq mk --project_id "${GCP_PROJECT_ID}" --dataset "${dataset}"
+                "${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --dataset "${dataset}"
+        fi
+}
+
 upload_tables() {
 	local meas_uuid="$1"
 	local meas_md_tmpfile="$2"
@@ -86,7 +113,7 @@ upload_tables() {
 	echo "${SCHEMA_RESULTS}" > "${SCHEMA_RESULTS_JSON}"
 	for path in "${EXPORT_DIR}"/*"${meas_uuid//-/_}"*."${EXPORT_FORMAT}"; do
 		filename="${path##*/}" # remove everything up to the last slash
-		bq_tmp_table="${BQ_DATASET}.${filename%.${EXPORT_FORMAT}}"
+		bq_tmp_table="${BQ_PRIVATE_DATASET}.${filename%.${EXPORT_FORMAT}}"
 		# Check if the iris table is already uploaded.
 		echo bq show --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}"
 		if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}" > /dev/null 2>&1; then
@@ -150,7 +177,7 @@ convert_and_insert_values() {
 
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
-		--parameter="scamper1_table_name_param:STRING:${BQ_DATASET}.${BQ_TABLE}" \
+		--parameter="scamper1_table_name_param:STRING:${BQ_PUBLIC_DATASET}.${BQ_TABLE}" \
 		--parameter="table_name_param:STRING:${bq_tmp_table}" \
 		--parameter="measurement_agent_param:STRING:${bq_tmp_table#*__}" \
 		--parameter="tool_param:STRING:${tool}" \
