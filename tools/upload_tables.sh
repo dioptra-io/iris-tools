@@ -59,8 +59,8 @@ main() {
 		echo "${bq_dataset_table} already exists"
 	else
 		# create the $BQ_TABLE table with the schema file
-		echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${bq_dataset_table}"
-		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --table "${bq_dataset_table}"
+		echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --time_partitioning_field "date" --time_partitioning_type DAY --table "${bq_dataset_table}"
+		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --time_partitioning_field "date" --time_partitioning_type DAY --table "${bq_dataset_table}"
 	fi
 
 	echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"

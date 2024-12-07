@@ -172,7 +172,7 @@ SELECT
         CAST(NULL AS INT64) AS Priority,
         CAST(NULL AS STRING) AS GitCommit
     ) AS parser,
-    CURRENT_DATE() AS date,
+    DATE(MIN(first_timestamp)) AS date,
     STRUCT(
         STRUCT(
             GENERATE_UUID() AS UUID,
@@ -185,7 +185,7 @@ SELECT
             'default' AS list_name,
             CAST(NULL AS INT64) AS ID,
             '%s' AS Hostname,
-            UNIX_SECONDS(MIN(last_timestamp)) AS start_time
+            UNIX_SECONDS(MIN(first_timestamp)) AS start_time
         ) AS CycleStart,
         STRUCT(
             'tracelb' AS type,
