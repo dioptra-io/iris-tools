@@ -130,6 +130,13 @@ upload_tables() {
 
 		echo building rows from the temporary table and inserting them into "$BQ_TABLE"
 		convert_and_insert_values "${meas_uuid}" "${meas_md_tmpfile}" "${bq_tmp_table}"
+
+		# delete temporary table after conversion
+		bq rm -t -f --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}"
+		echo table "${bq_tmp_table}" deleted
+		# delete table from EXPORT_DIR after conversion
+		rm -f "${path}"
+  		echo "${path}" removed
 	done
 }
 
