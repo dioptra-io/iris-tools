@@ -51,14 +51,14 @@ main() {
 				echo "do not have query for exporting ${table_prefix} tables"
 				return 1
 			fi
-			echo exporting clean "${meas_uuid}" "${table_prefix}" tables
-			export_tables "${meas_uuid}" "${table_prefix}"
+			echo exporting cleaned "${meas_uuid}" "${table_prefix}" tables
+			export_cleaned_tables "${meas_uuid}" "${table_prefix}"
 			echo
 		done
 	done
 }
 
-export_tables() {
+export_cleaned_tables() {
         local meas_uuid="$1"
         local table_prefix="$2"
         local tmpfile
@@ -91,7 +91,7 @@ export_tables() {
 		fi
 		verify_free_space 10
 		mkdir -p "${EXPORT_DIR}"
-		echo "exporting clean ${table_name}"
+		echo "exporting cleaned ${table_name}"
 		probes_table_name="${table_name//results/probes}"
 		query="${CLEANED_RESULTS_TABLE_EXPORT//\$\{table\}/$table_name}"
 		query="${query//\$\{probes_table\}/$probes_table_name}"
