@@ -185,6 +185,7 @@ convert_and_insert_values() {
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
 		--parameter="scamper1_table_name_param:STRING:${BQ_PUBLIC_DATASET}.${BQ_TABLE}" \
+		--parameter="measurement_uuid_param:STRING:${meas_uuid}" \
 		--parameter="table_name_param:STRING:${bq_tmp_table}" \
 		--parameter="measurement_agent_param:STRING:${bq_tmp_table#*__}" \
 		--parameter="tool_param:STRING:${tool}" \

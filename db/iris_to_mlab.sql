@@ -8,9 +8,11 @@
 DECLARE
   scamper1_table STRING DEFAULT @scamper1_table_name_param;
 DECLARE
-  measurement_agent STRING DEFAULT @measurement_agent_param;
+  measurement_uuid STRING DEFAULT @measurement_uuid_param;
 DECLARE
   table_name STRING DEFAULT @table_name_param;
+DECLARE
+  measurement_agent STRING DEFAULT @measurement_agent_param;
 DECLARE
   hostname STRING DEFAULT @host_param;
 DECLARE
@@ -65,8 +67,8 @@ results_with_replies_count AS (
        (ARRAY_AGG(capture_timestamp ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS capture_timestamp,
        (ARRAY_AGG(rtt ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)]          AS rtt,
        COUNT(*) AS reply_count,
-       -- SHA256 calculation for id, placeholder is measurement_agent
-       TO_HEX(SHA256(CONCAT('%s', probe_dst_addr)))					       AS id
+       -- SHA256 calculation to prevent duplicate rows insertion, placeholder is measurement_agent
+       TO_HEX(SHA256(CONCAT('%s', probe_dst_addr)))			       AS sha256
    FROM
        `%s`
    GROUP BY
@@ -98,7 +100,7 @@ links AS (
        far.capture_timestamp AS capture_timestamp,
        far.rtt               AS rtt,
        far.reply_count       AS reply_count,
-       near.id AS id  -- Propagate 'id' directly from 'results_with_replies_count'
+       near.sha256 	     AS sha256 -- Propagate SHA256 directly from results_with_replies_count
    FROM
        results_with_replies_count near
    INNER JOIN
@@ -109,11 +111,15 @@ links AS (
            near.probe_src_port = far.probe_src_port AND
            near.probe_dst_port = far.probe_dst_port AND
            near.probe_ttl = far.probe_ttl - 1
-  -- Filter out rows where the id already exists in scamper1 table to avoid duplicates
+  -- Filter out rows where the SHA256  already exists in scamper1 table to avoid duplicates
     WHERE NOT EXISTS (
         SELECT 1
         FROM `%s` scamper1
-        WHERE scamper1.id = near.id
+        WHERE
+	    -- Rows belonging to the same measurement, placeholder is measurement_uuid
+	    scamper1.id = '%s' AND
+	    -- Check for duplicate rows
+	    scamper1.raw.Metadata.UUID = near.sha256
     )
 ),
 
@@ -157,13 +163,13 @@ links_by_node AS (
                 )
             ] AS Probes
         )) AS Links,
-        (ARRAY_AGG(id ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS id,  -- Propagate id from the previous CTE
+        ANY_VALUE(sha256) AS sha256,  -- Propagate SHA256 from the previous CTE
     FROM links
     GROUP BY probe_protocol, probe_src_addr, probe_dst_addr, near_addr
 )
 
 SELECT
-    (ARRAY_AGG(id ORDER BY first_timestamp LIMIT 1))[OFFSET(0)] AS id,  -- Propagate id from the previous CTE
+    '%s' AS id, -- measurement_uuid AS id
     STRUCT(
         CAST(NULL AS STRING) AS Version,
         CURRENT_TIMESTAMP() AS Time,
@@ -175,7 +181,7 @@ SELECT
     DATE(MIN(first_timestamp)) AS date,
     STRUCT(
         STRUCT(
-            GENERATE_UUID() AS UUID,
+            ANY_VALUE(sha256) AS UUID,  -- Propagate SHA256 from the previous CTE
             CAST(NULL AS STRING) AS TracerouteCallerVersion,
             CAST(NULL AS BOOLEAN) AS CachedResult,
             CAST(NULL AS STRING) AS CachedUUID
@@ -203,7 +209,7 @@ SELECT
             CAST(NULL AS INT64) AS gaplimit,  -- Not applicable
             CAST(NULL AS INT64) AS wait_timeout,  -- Not applicable
             CAST(NULL AS INT64) AS wait_probe,  -- Not applicable
-            CAST(NULL AS INT64) AS probec,  -- TODO: Retrieve actual probe count from the measurement metadata.
+            CAST(NULL AS INT64) AS probec,  -- Not applicable
             CAST(NULL AS INT64) AS probec_max,  -- Not applicable
             COUNT(*)              AS nodec,
             (
@@ -239,6 +245,6 @@ SELECT
     ) AS raw
 FROM links_by_node lbn
 GROUP BY probe_protocol, probe_src_addr, probe_dst_addr
-""", scamper1_table, measurement_agent, table_name, scamper1_table, hostname, version, tool, min_ttl, failure_probability, hostname);
+""", scamper1_table, measurement_agent, table_name, scamper1_table, measurement_uuid, measurement_uuid, hostname, version, tool, min_ttl, failure_probability, hostname);
 EXECUTE IMMEDIATE
   convert_iris_to_scamper1;
