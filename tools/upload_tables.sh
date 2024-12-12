@@ -147,6 +147,7 @@ convert_and_insert_values() {
 	local agent
 	local index
 	local tool
+	local start_time
 	local md_fields
 	local MD_FIELDS=()
 
@@ -162,6 +163,7 @@ convert_and_insert_values() {
 	done
 
 	tool="$(jq -r .tool "${meas_md_tmpfile}")"
+	start_time="$(jq -r .start_time "${meas_md_tmpfile}")"
 	# sanity check
 	if [[ "${tool}" != "diamond-miner" && "${tool}" != "yarrp" ]]; then
 		echo "error: invalid tool: ${tool}"
@@ -189,6 +191,7 @@ convert_and_insert_values() {
 		--parameter="table_name_param:STRING:${bq_tmp_table}" \
 		--parameter="measurement_agent_param:STRING:${bq_tmp_table#*__}" \
 		--parameter="tool_param:STRING:${tool}" \
+		--parameter="start_time_param:STRING:${start_time}" \
 		--parameter="host_param:STRING:${MD_VALUES[0]}" \
 		--parameter="version_param:STRING:${MD_VALUES[1]}" \
 		--parameter="min_ttl_param:STRING:${MD_VALUES[2]}" \

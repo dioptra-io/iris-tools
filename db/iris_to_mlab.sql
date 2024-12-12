@@ -20,6 +20,8 @@ DECLARE
 DECLARE
   tool STRING DEFAULT @tool_param;
 DECLARE
+  start_time STRING DEFAULT @start_time_param;
+DECLARE
   min_ttl STRING DEFAULT @min_ttl_param;
 DECLARE
   failure_probability STRING DEFAULT @failure_probability_param;
@@ -116,8 +118,9 @@ links AS (
         SELECT 1
         FROM `%s` scamper1
         WHERE
-	    -- Rows belonging to the same measurement, placeholder is measurement_uuid
+	    -- Rows belonging to the same measurement and agent
 	    scamper1.id = '%s' AND
+	    scamper1.raw.CycleStart.Hostname = '%s' AND
 	    -- Check for duplicate rows
 	    scamper1.raw.Metadata.UUID = near.sha256
     )
@@ -178,11 +181,11 @@ SELECT
         CAST(NULL AS INT64) AS Priority,
         CAST(NULL AS STRING) AS GitCommit
     ) AS parser,
-    DATE(MIN(first_timestamp)) AS date,
+    DATE(TIMESTAMP('%s')) AS date,
     STRUCT(
         STRUCT(
             ANY_VALUE(sha256) AS UUID,  -- Propagate SHA256 from the previous CTE
-            CAST(NULL AS STRING) AS TracerouteCallerVersion,
+            '%s' AS TracerouteCallerVersion,
             CAST(NULL AS BOOLEAN) AS CachedResult,
             CAST(NULL AS STRING) AS CachedUUID
         ) AS Metadata,
@@ -194,10 +197,13 @@ SELECT
             UNIX_SECONDS(MIN(first_timestamp)) AS start_time
         ) AS CycleStart,
         STRUCT(
-            'tracelb' AS type,
-            '%s' AS version,
+            CASE
+               WHEN '%s'='diamond-miner' THEN 'MDA'
+               ELSE CAST(NULL AS STRING)
+	    END AS type, -- TODO: case when tool is yarrp
+            CAST(NULL AS STRING) AS version,
             CAST(NULL AS INT64) AS userid,
-            '%s' AS method,
+            'icmp-echo' AS method,
             probe_src_addr AS src,
             probe_dst_addr AS dst,
             make_timestamp(MIN(first_timestamp)) AS start,
@@ -245,6 +251,6 @@ SELECT
     ) AS raw
 FROM links_by_node lbn
 GROUP BY probe_protocol, probe_src_addr, probe_dst_addr
-""", scamper1_table, measurement_agent, table_name, scamper1_table, measurement_uuid, measurement_uuid, hostname, version, tool, min_ttl, failure_probability, hostname);
+""", scamper1_table, measurement_agent, table_name, scamper1_table, measurement_uuid, hostname, measurement_uuid, start_time, version, hostname, tool, min_ttl, failure_probability, hostname);
 EXECUTE IMMEDIATE
   convert_iris_to_scamper1;
