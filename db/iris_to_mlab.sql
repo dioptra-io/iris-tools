@@ -16,11 +16,9 @@ DECLARE
 DECLARE
   hostname STRING DEFAULT @host_param;
 DECLARE
-  version STRING DEFAULT @version_param;
-DECLARE
-  tool STRING DEFAULT @tool_param;
-DECLARE
   start_time STRING DEFAULT @start_time_param;
+DECLARE
+  agent_uuid STRING DEFAULT @agent_uuid_param;
 DECLARE
   min_ttl STRING DEFAULT @min_ttl_param;
 DECLARE
@@ -122,7 +120,7 @@ links AS (
 	    scamper1.id = '%s' AND
 	    scamper1.raw.CycleStart.Hostname = '%s' AND
 	    -- Check for duplicate rows
-	    scamper1.raw.Metadata.UUID = near.sha256
+	    scamper1.raw.Metadata.CachedUUID = near.sha256
     )
 ),
 
@@ -175,7 +173,7 @@ SELECT
     '%s' AS id, -- measurement_uuid AS id
     STRUCT(
         CAST(NULL AS STRING) AS Version,
-        CURRENT_TIMESTAMP() AS Time,
+        CAST(NULL AS TIMESTAMP) AS Time,
         CAST(NULL AS STRING) AS ArchiveURL,
         CAST(NULL AS STRING) AS Filename,
         CAST(NULL AS INT64) AS Priority,
@@ -184,10 +182,10 @@ SELECT
     DATE(TIMESTAMP('%s')) AS date,
     STRUCT(
         STRUCT(
-            ANY_VALUE(sha256) AS UUID,  -- Propagate SHA256 from the previous CTE
-            '%s' AS TracerouteCallerVersion,
+            '%s' AS UUID, -- agent UUID
+            CAST(NULL AS STRING)  AS TracerouteCallerVersion,
             CAST(NULL AS BOOLEAN) AS CachedResult,
-            CAST(NULL AS STRING) AS CachedUUID
+            ANY_VALUE(sha256)     AS CachedUUID -- Propagate SHA256 from the previous CTE
         ) AS Metadata,
         STRUCT(
             'cycle-start' AS Type,
@@ -197,10 +195,7 @@ SELECT
             UNIX_SECONDS(MIN(first_timestamp)) AS start_time
         ) AS CycleStart,
         STRUCT(
-            CASE
-               WHEN '%s'='diamond-miner' THEN 'MDA'
-               ELSE CAST(NULL AS STRING)
-	    END AS type, -- TODO: case when tool is yarrp
+	    'tracelb' AS type,
             CAST(NULL AS STRING) AS version,
             CAST(NULL AS INT64) AS userid,
             'icmp-echo' AS method,
@@ -226,10 +221,10 @@ SELECT
                   AND probe_dst_addr = lbn.probe_dst_addr
             ) AS linkc,
             ARRAY_AGG(STRUCT(
-                GENERATE_UUID() AS hop_id,
+                GENERATE_UUID()          AS hop_id,
                 COALESCE(near_addr, '*') AS addr,
-                CAST(NULL AS STRING) AS name,  -- Not applicable
-                NULL AS q_ttl,  -- Not applicable
+                CAST(NULL AS STRING)     AS name,  -- Not applicable
+                CAST(NULL AS INT64)      AS q_ttl,  -- Not applicable
                 (
                     SELECT COUNT(DISTINCT CONCAT(near_addr, '|', far_addr))
                     FROM links
@@ -251,6 +246,6 @@ SELECT
     ) AS raw
 FROM links_by_node lbn
 GROUP BY probe_protocol, probe_src_addr, probe_dst_addr
-""", scamper1_table, measurement_agent, table_name, scamper1_table, measurement_uuid, hostname, measurement_uuid, start_time, version, hostname, tool, min_ttl, failure_probability, hostname);
+""", scamper1_table, measurement_agent, table_name, scamper1_table, measurement_uuid, hostname, measurement_uuid, start_time, agent_uuid, hostname, min_ttl, failure_probability, hostname);
 EXECUTE IMMEDIATE
   convert_iris_to_scamper1;
