@@ -146,7 +146,6 @@ convert_and_insert_values() {
 	local bq_tmp_table="$3"
 	local agent
 	local index
-	local tool
 	local start_time
 	local md_fields
 	local MD_FIELDS=()
@@ -162,17 +161,11 @@ convert_and_insert_values() {
 		fi
 	done
 
-	tool="$(jq -r .tool "${meas_md_tmpfile}")"
 	start_time="$(jq -r .start_time "${meas_md_tmpfile}")"
-	# sanity check
-	if [[ "${tool}" != "diamond-miner" && "${tool}" != "yarrp" ]]; then
-		echo "error: invalid tool: ${tool}"
-		return 1
-	fi
 	# order of these fields should match --parameter lines in the bq command below
 	MD_FIELDS=(
+	    .agent_uuid
 	    .agent_parameters.hostname
-	    .agent_parameters.version
 	    .agent_parameters.min_ttl
 	    .tool_parameters.failure_probability
 	)
@@ -190,10 +183,9 @@ convert_and_insert_values() {
 		--parameter="measurement_uuid_param:STRING:${meas_uuid}" \
 		--parameter="table_name_param:STRING:${bq_tmp_table}" \
 		--parameter="measurement_agent_param:STRING:${bq_tmp_table#*__}" \
-		--parameter="tool_param:STRING:${tool}" \
 		--parameter="start_time_param:STRING:${start_time}" \
-		--parameter="host_param:STRING:${MD_VALUES[0]}" \
-		--parameter="version_param:STRING:${MD_VALUES[1]}" \
+		--parameter="agent_uuid_param:STRING:${MD_VALUES[0]}" \
+		--parameter="host_param:STRING:${MD_VALUES[1]}" \
 		--parameter="min_ttl_param:STRING:${MD_VALUES[2]}" \
 		--parameter="failure_probability_param:STRING:${MD_VALUES[3]}" \
 		< "${TABLE_CONVERSION_QUERY}"
