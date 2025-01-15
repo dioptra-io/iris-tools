@@ -1,0 +1,9 @@
+[
+  { "name": "id", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "start_time", "type": "TIMESTAMP", "mode": "REQUIRED" },
+  { "name": "end_time", "type": "TIMESTAMP", "mode": "REQUIRED" },
+  { "name": "snapshot_status", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "num_agents", "type": "INTEGER", "mode": "REQUIRED" },
+  { "name": "num_succesful_agents", "type": "INTEGER", "mode": "REQUIRED" }
+]
+
