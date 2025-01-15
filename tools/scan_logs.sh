@@ -2,10 +2,10 @@
 
 #
 # This script must be executed on the Iris server, as it relies on
-# the `logcli`.
+# the `logcli` tool.
 #
 # It scans container logs of $CONTAINER_NAME for a specific $PATTERN
-# within from $START_DATE to $END_DATE.
+# from $START_DATE to $END_DATE.
 #
 # The time period is divided into 30-day intervals to comply with
 # Loki's configuration limits (i.e., longer periods are not supported).

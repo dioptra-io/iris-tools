@@ -1,5 +1,6 @@
-This directory contains files that may take a long time to generate,
-but all contents can and should be regenerated to meet your desired
-criteria.
+This directory serves as a cache directory for files that can take
+a long time to generate.
 
-You can use the contents here for quick reference.
+You can use the cached files here for quick reference but all of
+these files can and should be regenerated to meet your desired
+criteria.

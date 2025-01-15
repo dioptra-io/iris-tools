@@ -37,7 +37,7 @@ ZONES=(
 main() {
 	for ((i=0; i<${#HOSTS[@]}; i++)); do
 	    echo "${HOSTS[${i}]}"
-	    gcloud compute ssh --project mlab-edgenet --zone "${ZONES[${i}]}" "${HOSTS[${i}]}" --command="
+	    gcloud compute ssh --project "${GCP_PROJECT_ID}" --zone "${ZONES[${i}]}" "${HOSTS[${i}]}" --command="
 			readonly IMAGE_NAME=\"ghcr.io/dioptra-io/iris/iris-agent:production\"
 			readonly CONTAINER_NAME=\"iris-agent\"
 
