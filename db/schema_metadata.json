@@ -1,0 +1,23 @@
+[
+  { "name": "id", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "start_time", "type": "TIMESTAMP", "mode": "REQUIRED" },
+  { "name": "duration", "type": "INTEGER", "mode": "REQUIRED" },
+  { "name": "snapshot_status", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "snapshot_labels", "type": "STRING", "mode": "REPEATED" },
+  { "name": "num_agents", "type": "INTEGER", "mode": "REQUIRED" },
+  { "name": "num_succesful_agents", "type": "INTEGER", "mode": "REQUIRED" },
+  { "fields": [
+    { "mode": "NULLABLE", "name": "iris", "type": "STRING" },
+    { "mode": "NULLABLE", "name": "diamond_miner", "type": "STRING" },
+    { "mode": "NULLABLE", "name": "zeph", "type": "STRING" },
+    { "mode": "NULLABLE", "name": "caracal", "type": "STRING" },
+    { "mode": "NULLABLE", "name": "parser", "type": "STRING" }
+  ],
+  "mode": "NULLABLE",
+  "name": "sw_versions",
+  "type": "RECORD"
+  },
+  { "name": "IPv4", "type": "BOOLEAN", "mode": "NULLABLE" },
+  { "name": "IPv6", "type": "BOOLEAN", "mode": "NULLABLE"},
+  { "name": "where_published", "type": "STRING", "mode": "REPEATED" }
+]
