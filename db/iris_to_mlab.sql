@@ -12,8 +12,6 @@ DECLARE
 DECLARE
   table_name STRING DEFAULT @table_name_param;
 DECLARE
-  measurement_agent STRING DEFAULT @measurement_agent_param;
-DECLARE
   hostname STRING DEFAULT @host_param;
 DECLARE
   start_time STRING DEFAULT @start_time_param;
@@ -54,9 +52,8 @@ results_with_replies_count AS (
    SELECT
        probe_protocol,
        format_addr(probe_src_addr)  AS probe_src_addr,
-       format_addr(probe_dst_addr)  AS formatted_probe_dst_addr,
+       format_addr(probe_dst_addr)  AS probe_dst_addr,
        probe_src_port,
-       probe_dst_port,
        probe_ttl,
        format_addr(reply_src_addr)  AS reply_src_addr,
        -- First reply values based on capture timestamp
@@ -67,8 +64,7 @@ results_with_replies_count AS (
        (ARRAY_AGG(capture_timestamp ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)] AS capture_timestamp,
        (ARRAY_AGG(rtt ORDER BY capture_timestamp LIMIT 1))[OFFSET(0)]          AS rtt,
        COUNT(*) AS reply_count,
-       -- SHA256 calculation to prevent duplicate rows insertion, placeholder is measurement_agent
-       TO_HEX(SHA256(CONCAT('%s', probe_dst_addr)))			       AS sha256
+       format_addr(probe_dst_prefix) AS probe_dst_prefix
    FROM
        `%s`
    GROUP BY
@@ -76,9 +72,9 @@ results_with_replies_count AS (
        probe_src_addr,
        probe_dst_addr,
        probe_src_port,
-       probe_dst_port,
        probe_ttl,
-       reply_src_addr
+       reply_src_addr,
+       probe_dst_prefix
 ),
 
 -- This CTE establishes the links between probes and their corresponding replies,
@@ -87,9 +83,8 @@ links AS (
    SELECT
        near.probe_protocol,
        near.probe_src_addr,
-       near.formatted_probe_dst_addr AS probe_dst_addr,
+       near.probe_dst_addr AS probe_dst_addr,
        near.probe_src_port,
-       near.probe_dst_port,
        near.reply_src_addr   AS near_addr,
        far.reply_src_addr    AS far_addr,
        far.reply_ttl         AS reply_ttl,
@@ -100,18 +95,17 @@ links AS (
        far.capture_timestamp AS capture_timestamp,
        far.rtt               AS rtt,
        far.reply_count       AS reply_count,
-       near.sha256 	     AS sha256 -- Propagate SHA256 directly from results_with_replies_count
+       near.probe_dst_prefix AS probe_dst_prefix
    FROM
        results_with_replies_count near
    INNER JOIN
        results_with_replies_count far ON
            near.probe_protocol = far.probe_protocol AND
            near.probe_src_addr = far.probe_src_addr AND
-           near.formatted_probe_dst_addr = far.formatted_probe_dst_addr AND
+           near.probe_dst_addr = far.probe_dst_addr AND
            near.probe_src_port = far.probe_src_port AND
-           near.probe_dst_port = far.probe_dst_port AND
            near.probe_ttl = far.probe_ttl - 1
-  -- Filter out rows where the SHA256  already exists in scamper1 table to avoid duplicates
+  -- Filter out rows to avoid duplicates
     WHERE NOT EXISTS (
         SELECT 1
         FROM `%s` scamper1
@@ -120,7 +114,7 @@ links AS (
 	    scamper1.id = '%s' AND
 	    scamper1.raw.CycleStart.Hostname = '%s' AND
 	    -- Check for duplicate rows
-	    scamper1.raw.Metadata.CachedUUID = near.sha256
+	    scamper1.raw.Tracelb.dst = near.probe_dst_prefix
     )
 ),
 
@@ -128,7 +122,7 @@ links_by_node AS (
     SELECT
         probe_protocol,
         probe_src_addr,
-        probe_dst_addr,
+        probe_dst_prefix,
         near_addr,
         MIN(capture_timestamp) AS first_timestamp,
         MAX(capture_timestamp) AS last_timestamp,
@@ -164,9 +158,8 @@ links_by_node AS (
                 )
             ] AS Probes
         )) AS Links,
-        ANY_VALUE(sha256) AS sha256,  -- Propagate SHA256 from the previous CTE
     FROM links
-    GROUP BY probe_protocol, probe_src_addr, probe_dst_addr, near_addr
+    GROUP BY probe_protocol, probe_src_addr, probe_dst_prefix, near_addr
 )
 
 SELECT
@@ -185,7 +178,7 @@ SELECT
             '%s' AS UUID, -- agent UUID
             CAST(NULL AS STRING)  AS TracerouteCallerVersion,
             CAST(NULL AS BOOLEAN) AS CachedResult,
-            ANY_VALUE(sha256)     AS CachedUUID -- Propagate SHA256 from the previous CTE
+            CAST(NULL AS STRING)  AS CachedUUID
         ) AS Metadata,
         STRUCT(
             'cycle-start' AS Type,
@@ -200,7 +193,7 @@ SELECT
             CAST(NULL AS INT64) AS userid,
             'icmp-echo' AS method,
             probe_src_addr AS src,
-            probe_dst_addr AS dst,
+            probe_dst_prefix AS dst,
             make_timestamp(MIN(first_timestamp)) AS start,
             CAST(NULL AS INT64) AS probe_size,  -- Not stored in Iris
             CAST('%s' AS INT64) AS firsthop,
@@ -218,7 +211,7 @@ SELECT
                 FROM links
                 WHERE probe_protocol = lbn.probe_protocol
                   AND probe_src_addr = lbn.probe_src_addr
-                  AND probe_dst_addr = lbn.probe_dst_addr
+                  AND probe_dst_prefix = lbn.probe_dst_prefix
             ) AS linkc,
             ARRAY_AGG(STRUCT(
                 GENERATE_UUID()          AS hop_id,
@@ -230,7 +223,7 @@ SELECT
                     FROM links
                     WHERE probe_protocol = lbn.probe_protocol
                       AND probe_src_addr = lbn.probe_src_addr
-                      AND probe_dst_addr = lbn.probe_dst_addr
+                      AND probe_dst_prefix = lbn.probe_dst_prefix
                       AND near_addr = lbn.near_addr
                 ) AS linkc,
                 ARRAY(SELECT AS STRUCT Links) AS links
@@ -245,7 +238,7 @@ SELECT
         ) AS CycleStop
     ) AS raw
 FROM links_by_node lbn
-GROUP BY probe_protocol, probe_src_addr, probe_dst_addr
-""", scamper1_table, measurement_agent, table_name, scamper1_table, measurement_uuid, hostname, measurement_uuid, start_time, agent_uuid, hostname, min_ttl, failure_probability, hostname);
+GROUP BY probe_protocol, probe_src_addr, probe_dst_prefix
+""", scamper1_table, table_name, scamper1_table, measurement_uuid, hostname, measurement_uuid, start_time, agent_uuid, hostname, min_ttl, failure_probability, hostname);
 EXECUTE IMMEDIATE
   convert_iris_to_scamper1;
