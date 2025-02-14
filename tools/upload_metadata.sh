@@ -157,29 +157,29 @@ upload_public_metadata() {
 	SQL_QUERY="
 INSERT INTO \`${bq_public_table}\`
 SELECT
-  id AS id,
-  start_time AS start_time,
-  TIMESTAMP_DIFF(end_time, start_time, SECOND) AS duration,
-  snapshot_status AS snapshot_status,
-  ${SNAPSHOT_LABELS} AS snapshot_labels,
-  num_agents AS num_agents,
-  num_succesful_agents AS num_succesful_agents,
-  STRUCT(
-    IF('${IRIS_VERSION}' = '', NULL, '${IRIS_VERSION}') AS iris,  -- If empty, set to NULL
-    IF('${DIAMOND_MINER_VERSION}' = '', NULL, '${DIAMOND_MINER_VERSION}') AS diamond_miner,  -- If empty, set to NULL
-    IF('${ZEPH_VERSION}' = '', NULL, '${ZEPH_VERSION}') AS zeph,  -- If empty, set to NULL
-    IF('${CARACAL_VERSION}' = '', NULL, '${CARACAL_VERSION}') AS caracal,  -- If empty, set to NULL
-    IF('${PARSER_VERSION}' = '', NULL, '${PARSER_VERSION}') AS parser -- If empty, set to NULL
-  ) AS sw_versions,
-  ${IPV4} AS IPv4,
-  ${IPV6} AS IPv6,
-  ${WHERE_PUBLISHED} AS where_published
+    id AS id,
+    start_time AS start_time,
+    TIMESTAMP_DIFF(end_time, start_time, SECOND) AS duration,
+    snapshot_status AS snapshot_status,
+    ${SNAPSHOT_LABELS} AS snapshot_labels,
+    num_agents AS num_agents,
+    num_succesful_agents AS num_succesful_agents,
+    STRUCT(
+        IF('${IRIS_VERSION}' = '', NULL, '${IRIS_VERSION}') AS iris,
+        IF('${DIAMOND_MINER_VERSION}' = '', NULL, '${DIAMOND_MINER_VERSION}') AS diamond_miner,
+        IF('${ZEPH_VERSION}' = '', NULL, '${ZEPH_VERSION}') AS zeph,
+        IF('${CARACAL_VERSION}' = '', NULL, '${CARACAL_VERSION}') AS caracal,
+        IF('${PARSER_VERSION}' = '', NULL, '${PARSER_VERSION}') AS parser
+    ) AS sw_versions,
+    ${IPV4} AS IPv4,
+    ${IPV6} AS IPv6,
+    ${WHERE_PUBLISHED} AS where_published
 FROM \`${bq_tmp_table}\` tmp_metadata
 WHERE NOT EXISTS (
-  SELECT 1
-  FROM \`${bq_public_table}\` metadata
-  WHERE tmp_metadata.id = metadata.id
-)
+    SELECT 1
+    FROM \`${bq_public_table}\` metadata
+    WHERE tmp_metadata.id = metadata.id
+);
 "
 	# execute the query using bq
 	echo "inserting metadata into ${bq_public_table}"
