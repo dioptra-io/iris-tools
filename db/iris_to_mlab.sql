@@ -10,7 +10,7 @@ DECLARE
 DECLARE
   measurement_uuid STRING DEFAULT @measurement_uuid_param;
 DECLARE
-  table_name STRING DEFAULT @table_name_param;
+  iris_table STRING DEFAULT @iris_table_name_param;
 DECLARE
   hostname STRING DEFAULT @host_param;
 DECLARE
@@ -305,7 +305,7 @@ GROUP BY
  probe_protocol,
  probe_src_addr,
  probe_dst_prefix
-""", scamper1_table, table_name, scamper1_table, measurement_uuid,
+""", scamper1_table, iris_table, scamper1_table, measurement_uuid,
 hostname, measurement_uuid, start_time, agent_uuid, hostname, min_ttl,
 failure_probability, hostname);
 
