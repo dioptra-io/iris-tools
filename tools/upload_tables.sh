@@ -56,7 +56,7 @@ main() {
 	if check_dataset_or_table "${bq_public_table}"; then
 		echo "${bq_public_table} already exists"
 	else
-		# create the $BQ_PUBLIC TABLE table with the schema file
+		# create the $BQ_PUBLIC_TABLE table with the schema file
 		echo "bq mk --project_id ${GCP_PROJECT_ID} --schema ${SCHEMA_SCAMPER1_JSON} --clustering_fields id --time_partitioning_field date --time_partitioning_type DAY --table ${bq_public_table}"
 		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --time_partitioning_field "date" --time_partitioning_type DAY --table "${bq_public_table}"
 	fi
@@ -120,10 +120,10 @@ upload_tables() {
 		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}"  --clustering_fields="${clustering}" --table "${bq_tmp_table}"
 
 		# upload values into the temporary table
-		echo bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_tmp_table}" "${path}"
+		echo "bq load --project_id=${GCP_PROJECT_ID} --source_format=PARQUET ${bq_tmp_table} ${path}"
 		"${TIME}" bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_tmp_table}" "${path}"
 
-		echo "building rows from the temporary table and inserting them into ${bq_tmp_table}"
+		echo "building rows from the temporary table and inserting them into ${BQ_PUBLIC_DATASET}.${BQ_PUBLIC_TABLE}"
 		convert_and_insert_values "${meas_uuid}" "${meas_md_tmpfile}" "${bq_tmp_table}"
 
 		# delete temporary table after conversion
