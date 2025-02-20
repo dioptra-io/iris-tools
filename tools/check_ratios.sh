@@ -16,9 +16,10 @@ set -o pipefail
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
-readonly CONTAINER_NAME="iris-agent"
-readonly START_DATE="2025-01-30T00:00:00Z"
-readonly END_DATE="2025-01-31T00:00:00Z"
+# The following variables can be set via the environment.
+: "${CONTAINER_NAME:="iris-agent"}"
+: "${START_DATE:="2025-01-30T00:00:00Z"}"
+: "${END_DATE:="2025-01-31T00:00:00Z"}"
 
 readonly VARIABLES=(
 	"pcap_received"
@@ -58,8 +59,14 @@ usage:
 	-a, --agent	agent hostname (e.g., iris-us-east4)
 	-l, --logs	path to logs file
 	    --vars	print all variables names
-	var1            variable 1 (defult: $DEF_VAR1)
-	var2            variable 1 (defult: $DEF_VAR2)
+	var1            variable 1 (defult: ${DEF_VAR1})
+	var2            variable 1 (defult: ${DEF_VAR2})
+
+environment variables:
+	CONTAINER_NAME (default: ${CONTAINER_NAME})
+	START_DATE (default: ${START_DATE})
+	END_DATE (default: ${END_DATE})
+
 examples:
 	$ ./check_ratio -a iris-us-east4 -l iris-us-east4.txt
 	$ ./check_ratio -l iris-us-east4.txt
