@@ -60,10 +60,13 @@ scan_logs() {
 	while [[ ! "${start_date}" > "${end_date}" ]]; do
 		next_start_date=$(add_days "${start_date}" 30)
 		to_date="$(subtract_second "${next_start_date}")"
+		if [[ "${to_date}" > "${end_date}" ]]; then
+			to_date="${end_date}"
+		fi
 		(1>&2 date)
 		(1>&2 echo "logcli --quiet --addr=http://${addr}:3100 query ${QUERY} --from=${start_date} --to=${to_date} --limit 200000000 > ${tmpfile}.${i}")
 		logcli --quiet --addr="http://${addr}:3100" query "${QUERY}" --from="${start_date}" --to="${to_date}" --limit 200000000 > "${tmpfile}.${i}"
-		grep --color -i "${PATTERN}" "${tmpfile}.${i}" || :
+		grep --color -i ${PATTERN} "${tmpfile}.${i}" || :
 		echo
 		start_date="${next_start_date}"
 	done
