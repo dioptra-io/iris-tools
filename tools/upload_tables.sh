@@ -40,6 +40,8 @@ main() {
 	source "${CONFIG_FILE}"
 	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
+	# Check if GCP_INSTANCES is provided and the corresponding file exists
+	[[ -n "${GCP_INSTANCES:-}" ]] && [[ ! -f "${GCP_INSTANCES}" ]] && { echo "error: File does not exist: ${GCP_INSTANCES}" >&2; exit 1; }
 
 	# check if datasets and metadata table exist
 	bq_metadata_table="${BQ_PUBLIC_DATASET}.${BQ_METADATA_TABLE:?unset BQ_METADATA_TABLE}"
@@ -170,6 +172,7 @@ convert_and_insert_values() {
 	local start_time
 	local MD_FIELDS=()
 	local md_fields
+	local src_addr
 
 	# get the metadata of this measurement
 	agent="$(echo "${bq_tmp_table}" | sed -e 's/.*__\(........_...._...._...._............\)/\1/' | tr '_' '-')"
@@ -198,6 +201,15 @@ convert_and_insert_values() {
 		return 1
 	fi
 
+	if  [[ -n "${GCP_INSTANCES:-}" ]]; then
+		if ! src_addr="$(grep "${MD_VALUES[1]}" "${GCP_INSTANCES}" | awk '{print $5}')" || [[ -z "${src_addr}" ]]; then
+			echo "error: ${MD_VALUES[1]} is not in ${GCP_INSTANCES}"
+			return 1
+		fi
+	else
+		src_addr="$(jq -r ".agents[${index}].agent_parameters.external_ipv4_address" "${meas_md_tmpfile}")"
+	fi
+
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
 		--parameter="scamper1_table_name_param:STRING:${BQ_PUBLIC_DATASET}.${BQ_PUBLIC_TABLE}" \
@@ -206,6 +218,7 @@ convert_and_insert_values() {
 		--parameter="start_time_param:STRING:${start_time}" \
 		--parameter="agent_uuid_param:STRING:${MD_VALUES[0]}" \
 		--parameter="host_param:STRING:${MD_VALUES[1]}" \
+		--parameter="src_addr_param:STRING:${src_addr}" \
 		--parameter="min_ttl_param:STRING:${MD_VALUES[2]}" \
 		--parameter="failure_probability_param:STRING:${MD_VALUES[3]}" \
 		< "${TABLE_CONVERSION_QUERY}"
