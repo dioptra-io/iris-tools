@@ -68,10 +68,10 @@ environment variables:
 	END_DATE (default: ${END_DATE})
 
 examples:
-	$ ./check_ratio -a iris-us-east4 -l iris-us-east4.txt
-	$ ./check_ratio -l iris-us-east4.txt
-	$ ./check_ratio --vars
-	$ ./check_ratio -l iris-us-east4.txt packets_received packets_received_invalid
+	$ ./${PROG_NAME} -a iris-us-east4 -l iris-us-east4.txt
+	$ ./${PROG_NAME} -l iris-us-east4.txt
+	$ ./${PROG_NAME} --vars
+	$ ./${PROG_NAME} -l iris-us-east4.txt packets_received packets_received_invalid
 EOF
 	exit "${exit_code}"
 }
@@ -83,6 +83,9 @@ main() {
 	parse_args "$@"
 
 	check_logs_file "${LOGS_FILE}"
+	if [[ ! -s "${LOGS_FILE}" ]]; then
+		(1>&2 echo "warning: ${LOGS_FILE} is empty")
+	fi
 
 	tmp_file1="/tmp/check_ratios.$$.1"
 	(1>&2 echo "reversing and cleaning ${LOGS_FILE} and saving in ${tmp_file1}")
@@ -154,16 +157,16 @@ check_logs_file() {
 
 	if [[ -f "${logs_file}" ]]; then
 		read -r -p "use the existing ${logs_file}? [Y/n] " answer
+		if [[ "${answer}" == "" || "${answer,,}" == "y" ]]; then
+			echo "ignoring --agent ${AGENT_HOSTNAME} because logs file ${logs_file} already exists"
+			return 0
+		fi
 	fi
-	if [[ "${answer}" == "" || "${answer,,}" != "y" ]]; then
-		echo "ignoring --agent ${AGENT_HOSTNAME} because logs file ${logs_file} already exists"
-		return
-	fi
-
 	if [[ "${AGENT_HOSTNAME}" == "" ]]; then
 		echo "you have to specify an agent hostname (--agent) to create a new ${logs_file}"
 		return 1
 	fi
+
 	export CONTAINER_NAME
 	export START_DATE
 	export END_DATE
@@ -269,8 +272,8 @@ check_ratios() {
 			}
 		}
 		printf("%s %s %s=%d %s=%d", $1, $2, var1, var1_val, var2, var2_val);
-		if (var1_val > 0) {
-			printf(" ratio=%.03f", var2_val / var1_val);
+		if (var2_val > 0) {
+			printf(" ratio=%.03f", var1_val / var2_val);
 		}
 		printf("\n");
 	}'
