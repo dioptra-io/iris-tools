@@ -7,7 +7,6 @@ shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
 CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
-FORCE=false # --force
 POSITIONAL_ARGS=()
 
 
@@ -18,7 +17,6 @@ usage() {
 usage:
 	${PROG_NAME} [-hf] [-c <config>] <uuid>...
 	-h, --help      print help message and exit
-	-f, --force     upload tables even if they already exist in BigQuery
 	-c, --config    configuration file (default ${CONFIG_FILE})
 
 	uuid: measurement uuid
@@ -27,9 +25,7 @@ EOF
 }
 
 main() {
-        local bq_public_dataset
-	local bq_private_dataset
-	local bq_dataset_table
+	local bq_public_table
 	local meas_md_tmpfile
 	local meas_uuid
 	local table_prefix
@@ -41,26 +37,28 @@ main() {
 	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
 
-	# create the dataset for inserting measurement data in scamper1 format if it doesn't exist
-        # shellcheck disable=SC2153
-	bq_public_dataset="${BQ_PUBLIC_DATASET}"
-	echo verifying "${bq_public_dataset}"
-	verify_dataset "${bq_public_dataset}"
+	# check if  the dataset for inserting measurement data in scamper1 format exists
+	echo "checking ${BQ_PUBLIC_DATASET}"
+	if ! check_dataset_or_table "${BQ_PUBLIC_DATASET}"; then
+		echo "error: ${BQ_PUBLIC_DATASET} does not exist"
+		exit 1
+	fi
 
-	# create the dataset for uploading temporary iris tables  if it doesn't exist
-        # shellcheck disable=SC2153
-	bq_private_dataset="${BQ_PRIVATE_DATASET}"
-        echo verifying "${bq_private_dataset}"
-        verify_dataset "${bq_private_dataset}"
+	# check if  the dataset for uploading temporary iris tables exists
+        echo "checking ${BQ_PRIVATE_DATASET}"
+        if ! check_dataset_or_table "${BQ_PRIVATE_DATASET}"; then
+		echo "error: ${BQ_PRIVATE_DATASET} does not exist"
+		exit 1
+	fi
 
 	# create the table for inserting measurement data in scamper1 format  if it doesn't exist
-	bq_dataset_table="${BQ_PUBLIC_DATASET}"."${BQ_TABLE}"
-	if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_dataset_table}" > /dev/null 2>&1; then
-		echo "${bq_dataset_table} already exists"
+	bq_public_table="${BQ_PUBLIC_DATASET}"."${BQ_PUBLIC_TABLE:?unset BQ_PUBLIC_TABLE}"
+	if check_dataset_or_table "${bq_public_table}"; then
+		echo "${bq_public_table} already exists"
 	else
-		# create the $BQ_TABLE table with the schema file
-		echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --time_partitioning_field "date" --time_partitioning_type DAY --table "${bq_dataset_table}"
-		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --time_partitioning_field "date" --time_partitioning_type DAY --table "${bq_dataset_table}"
+		# create the $BQ_PUBLIC_TABLE table with the schema file
+		echo "bq mk --project_id ${GCP_PROJECT_ID} --schema ${SCHEMA_SCAMPER1_JSON} --clustering_fields id --time_partitioning_field date --time_partitioning_type DAY --table ${bq_public_table}"
+		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_SCAMPER1_JSON}" --clustering_fields "id" --time_partitioning_field "date" --time_partitioning_type DAY --table "${bq_public_table}"
 	fi
 
 	echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
@@ -74,7 +72,7 @@ main() {
 				echo "do not have query for uploading ${table_prefix} tables"
 				return 1
 			fi
-			echo uploading "${meas_uuid}" "${table_prefix}" tables
+			echo "uploading ${meas_uuid} ${table_prefix}" tables
 			upload_tables "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"
 			echo
 		done
@@ -82,16 +80,12 @@ main() {
 	rm -f "${meas_md_tmpfile}"
 }
 
-verify_dataset() {
-        local dataset="$1"
+check_dataset_or_table() {
+        local resource="$1"
 
-	# check if dataset exists
-        if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${dataset}" > /dev/null 2>&1; then
-                echo "${dataset} already exists"
-        else
-                # create the dataset
-                echo bq mk --project_id "${GCP_PROJECT_ID}" --dataset "${dataset}"
-                "${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --dataset "${dataset}"
+	# check if resource exists
+        if ! bq show --project_id="${GCP_PROJECT_ID}" "${resource}" > /dev/null 2>&1; then
+                return 1
         fi
 }
 
@@ -99,10 +93,11 @@ upload_tables() {
 	local meas_uuid="$1"
 	local meas_md_tmpfile="$2"
 	local table_prefix="$3"
-	local path
 	local files=()
-	local bq_tmp_table
 	local clustering
+	local path
+	local filename
+	local bq_tmp_table
 
 	files=("${EXPORT_DIR}"/*."${EXPORT_FORMAT}")
 	clustering="probe_dst_addr,probe_src_port,probe_ttl,reply_src_addr"
@@ -114,26 +109,26 @@ upload_tables() {
 	for path in "${EXPORT_DIR}"/*"${meas_uuid//-/_}"*."${EXPORT_FORMAT}"; do
 		filename="${path##*/}" # remove everything up to the last slash
 		bq_tmp_table="${BQ_PRIVATE_DATASET}.${filename%.${EXPORT_FORMAT}}"
-		# Check if the iris table is already uploaded.
-		echo bq show --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}"
-		if ! ${FORCE} && bq show --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}" > /dev/null 2>&1; then
+		# If iris table already exists, it might be empty, so delete it to ensure a fresh start before reloading data.
+		if check_dataset_or_table "${bq_tmp_table}"; then
 			echo "${bq_tmp_table} already uploaded"
-		else
-			# create the temporary table with the schema file
-			echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}" --clustering_fields="${clustering}" --table "${bq_tmp_table}"
-			"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}"  --clustering_fields="${clustering}" --table "${bq_tmp_table}"
-
-			# upload values into the temporary table
-			echo bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_tmp_table}" "${path}"
-			"${TIME}" bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_tmp_table}" "${path}"
+			bq rm -t -f --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}"
+			echo "temporary table ${bq_tmp_table} deleted"
 		fi
+		# create the temporary table with the schema file
+		echo "bq mk --project_id ${GCP_PROJECT_ID} --schema ${SCHEMA_RESULTS_JSON} --clustering_fields=${clustering} --table ${bq_tmp_table}"
+		"${TIME}" bq mk --project_id "${GCP_PROJECT_ID}" --schema "${SCHEMA_RESULTS_JSON}"  --clustering_fields="${clustering}" --table "${bq_tmp_table}"
 
-		echo building rows from the temporary table and inserting them into "$BQ_TABLE"
+		# upload values into the temporary table
+		echo "bq load --project_id=${GCP_PROJECT_ID} --source_format=PARQUET ${bq_tmp_table} ${path}"
+		"${TIME}" bq load --project_id="${GCP_PROJECT_ID}" --source_format=PARQUET "${bq_tmp_table}" "${path}"
+
+		echo "building rows from the temporary table and inserting them into ${BQ_PUBLIC_DATASET}.${BQ_PUBLIC_TABLE}"
 		convert_and_insert_values "${meas_uuid}" "${meas_md_tmpfile}" "${bq_tmp_table}"
 
 		# delete temporary table after conversion
 		bq rm -t -f --project_id="${GCP_PROJECT_ID}" "${bq_tmp_table}"
-		echo table "${bq_tmp_table}" deleted
+		echo "table ${bq_tmp_table} deleted"
 		# delete table from EXPORT_DIR after conversion
 		rm -f "${path}"
   		echo "${path}" removed
@@ -147,8 +142,8 @@ convert_and_insert_values() {
 	local agent
 	local index
 	local start_time
-	local md_fields
 	local MD_FIELDS=()
+	local md_fields
 
 	# get the metadata of this measurement
 	agent="$(echo "${bq_tmp_table}" | sed -e 's/.*__\(........_...._...._...._............\)/\1/' | tr '_' '-')"
@@ -179,10 +174,9 @@ convert_and_insert_values() {
 
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
-		--parameter="scamper1_table_name_param:STRING:${BQ_PUBLIC_DATASET}.${BQ_TABLE}" \
+		--parameter="scamper1_table_name_param:STRING:${BQ_PUBLIC_DATASET}.${BQ_PUBLIC_TABLE}" \
 		--parameter="measurement_uuid_param:STRING:${meas_uuid}" \
-		--parameter="table_name_param:STRING:${bq_tmp_table}" \
-		--parameter="measurement_agent_param:STRING:${bq_tmp_table#*__}" \
+		--parameter="iris_table_name_param:STRING:${bq_tmp_table}" \
 		--parameter="start_time_param:STRING:${start_time}" \
 		--parameter="agent_uuid_param:STRING:${MD_VALUES[0]}" \
 		--parameter="host_param:STRING:${MD_VALUES[1]}" \
@@ -196,8 +190,8 @@ parse_args() {
 	local arg
 
 	if ! args="$(getopt \
-			--options "c:fh" \
-			--longoptions "config: force help" \
+			--options "c:h" \
+			--longoptions "config: help" \
 			-- "$@")"; then
 		usage 1
 	fi
@@ -208,7 +202,6 @@ parse_args() {
 		shift
 		case "${arg}" in
 		-c|--config) CONFIG_FILE="$1"; shift 1;;
-		-f|--force) FORCE=true;;
 		-h|--help) usage 0;;
 		--) break;;
 		*) echo "internal error parsing arg=${arg}"; usage 1;;
