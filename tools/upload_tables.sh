@@ -40,14 +40,14 @@ main() {
 	# check if  the dataset for inserting measurement data in scamper1 format exists
 	echo "checking ${BQ_PUBLIC_DATASET}"
 	if ! check_dataset_or_table "${BQ_PUBLIC_DATASET}"; then
-		echo "error: ${BQ_PUBLIC_DATASET} does not exists"
+		echo "error: ${BQ_PUBLIC_DATASET} does not exist"
 		exit 1
 	fi
 
 	# check if  the dataset for uploading temporary iris tables exists
         echo "checking ${BQ_PRIVATE_DATASET}"
         if ! check_dataset_or_table "${BQ_PRIVATE_DATASET}"; then
-		echo "error: ${BQ_PRIVATE_DATASET} does not exists"
+		echo "error: ${BQ_PRIVATE_DATASET} does not exist"
 		exit 1
 	fi
 
@@ -190,8 +190,8 @@ parse_args() {
 	local arg
 
 	if ! args="$(getopt \
-			--options "c:fh" \
-			--longoptions "config: force help" \
+			--options "c:h" \
+			--longoptions "config: help" \
 			-- "$@")"; then
 		usage 1
 	fi
