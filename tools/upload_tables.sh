@@ -110,7 +110,7 @@ check_uuid_in_metadata() {
 	echo "${query}"
 	query_result=$(bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}" | tail -n 1)
 	echo "${query_result}"
-	if [[ "${query_result}" -eq 0 ]]; then
+	if [[ "${query_result}" == "0" ]]; then
 		return 1
 	fi
 }
