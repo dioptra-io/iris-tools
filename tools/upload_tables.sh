@@ -41,7 +41,7 @@ main() {
 	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
 	# Check if GCP_INSTANCES is provided and the corresponding file exists
-	[[ -n "${GCP_INSTANCES:-}" ]] && [[ ! -f "${GCP_INSTANCES}" ]] && { echo "error: File does not exist: ${GCP_INSTANCES}" >&2; exit 1; }
+	[[ -n "${GCP_INSTANCES}" ]] && [[ ! -f "${GCP_INSTANCES}" ]] && { echo "error: File does not exist: ${GCP_INSTANCES}" >&2; exit 1; }
 
 	# check if datasets and metadata table exist
 	bq_metadata_table="${BQ_PUBLIC_DATASET}.${BQ_METADATA_TABLE:?unset BQ_METADATA_TABLE}"
@@ -201,13 +201,19 @@ convert_and_insert_values() {
 		return 1
 	fi
 
-	if  [[ -n "${GCP_INSTANCES:-}" ]]; then
-		if ! src_addr="$(grep "${MD_VALUES[1]}" "${GCP_INSTANCES}" | awk '{print $5}')" || [[ -z "${src_addr}" ]]; then
+	# get external ipv4 address
+	if  [[ -n "${GCP_INSTANCES}" ]]; then
+		if ! grep -q "${MD_VALUES[1]}" "${GCP_INSTANCES}"; then
 			echo "error: ${MD_VALUES[1]} is not in ${GCP_INSTANCES}"
 			return 1
 		fi
+		src_addr="$(awk -v agent="${MD_VALUES[1]}" '$0 ~ agent {print $5}' "${GCP_INSTANCES}")"
 	else
 		src_addr="$(jq -r ".agents[${index}].agent_parameters.external_ipv4_address" "${meas_md_tmpfile}")"
+	fi
+	if [[ ! "${src_addr}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+		echo "error: ${src_addr} is not a valid external IPv4 address"
+		return 1
 	fi
 
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
