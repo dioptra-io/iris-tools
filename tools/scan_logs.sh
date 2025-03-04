@@ -2,10 +2,10 @@
 
 #
 # This script must be executed on the Iris server, as it relies on
-# the `logcli` tool.
+# the `logcli`.
 #
-# It scans container logs of $CONTAINER_NAME for a specific $PATTERN
-# from $START_DATE to $END_DATE.
+# It fetches the container logs of $CONTAINER_NAME from $START_DATE to
+# $END_DATE and, if $PATTERN is provided, it searches the logs for it.
 #
 # The time period is divided into 30-day intervals to comply with
 # Loki's configuration limits (i.e., longer periods are not supported).
@@ -22,9 +22,9 @@ shellcheck "$0" # exits if shellcheck doesn't pass
 
 # The following variables can be set via the environment.
 : "${CONTAINER_NAME:="iris_worker_1"}"
-: "${PATTERN:="failed"}"
 : "${START_DATE:="2024-01-01T00:00:00Z"}"
 : "${END_DATE:=""}"
+: "${PATTERN:=""}"
 
 readonly QUERY="{container_name=\"$CONTAINER_NAME\"}"
 
@@ -64,9 +64,13 @@ scan_logs() {
 			to_date="${end_date}"
 		fi
 		(1>&2 date)
-		(1>&2 echo "logcli --quiet --addr=http://${addr}:3100 query ${QUERY} --from=${start_date} --to=${to_date} --limit 200000000 > ${tmpfile}.${i}")
-		logcli --quiet --addr="http://${addr}:3100" query "${QUERY}" --from="${start_date}" --to="${to_date}" --limit 200000000 > "${tmpfile}.${i}"
-		grep --color -i ${PATTERN} "${tmpfile}.${i}" || :
+		(1>&2 echo "logcli --quiet --addr=http://${addr}:3100 query ${QUERY} --from=${start_date} --to=${to_date} --limit 200000000 > ${tmpfile}.${i}-latest-first")
+		logcli --quiet --addr="http://${addr}:3100" query "${QUERY}" --from="${start_date}" --to="${to_date}" --limit 200000000 > "${tmpfile}.${i}-latest-first"
+		tac "${tmpfile}.${i}-latest-first" > "${tmpfile}.${i}"
+		rm "${tmpfile}.${i}-latest-first"
+		if [[ "${PATTERN}" != "" ]]; then
+			grep --color -i ${PATTERN} "${tmpfile}.${i}" || :
+		fi
 		echo
 		start_date="${next_start_date}"
 	done
