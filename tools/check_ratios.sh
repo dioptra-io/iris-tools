@@ -20,6 +20,7 @@ readonly PROG_NAME="${0##*/}"
 : "${CONTAINER_NAME:="iris-agent"}"
 : "${START_DATE:="2025-01-30T00:00:00Z"}"
 : "${END_DATE:="2025-01-31T00:00:00Z"}"
+: "${TMP_DIR:="/tmp"}"
 
 readonly VARIABLES=(
 	"pcap_received"
@@ -43,7 +44,9 @@ readonly DEF_VAR1="packets_received"
 readonly DEF_VAR2="pcap_received"
 
 AGENT_HOSTNAME="" # -a
+EXPR_RATIO="var1 / var2" # -e
 LOGS_FILE="" # -l
+YES="" # -y
 VAR1="${DEF_VAR1}" # 1st argument
 VAR2="${DEF_VAR2}" # 2nd argument
 
@@ -53,23 +56,28 @@ usage() {
 
 	cat <<EOF
 usage:
-	${PROG_NAME} [-h] [-a <agent-hostname>] [-l <logs-file>]  [<var1> <var2>]
+	${PROG_NAME} --help
 	${PROG_NAME} --vars
+	${PROG_NAME} [-y] [-a <agent-hostname>] [-l <logs-file>]  [<var1> <var2>] [-e <expr>]
 	-h, --help      print help message and exit
 	-a, --agent	agent hostname (e.g., iris-us-east4)
+	-e, --expr	the expression to compute the ratio (default: ${EXPR_RATIO})
 	-l, --logs	path to logs file
 	    --vars	print all variables names
-	var1            variable 1 (defult: ${DEF_VAR1})
-	var2            variable 1 (defult: ${DEF_VAR2})
+	-y, --yes	use the existing logs file if it exists (i.e., do not prompt for confirmation)
+	var1            variable 1 (default: ${DEF_VAR1}) should appear before var2 in the logs file
+	var2            variable 2 (default: ${DEF_VAR2}) should appear after var1 in the logs file
 
 environment variables:
 	CONTAINER_NAME (default: ${CONTAINER_NAME})
 	START_DATE (default: ${START_DATE})
 	END_DATE (default: ${END_DATE})
+	TMP_DIR (default: ${TMP_DIR})
 
 examples:
 	$ ./${PROG_NAME} -a iris-us-east4 -l iris-us-east4.txt
 	$ ./${PROG_NAME} -l iris-us-east4.txt
+	$ ./${PROG_NAME} -l iris-us-east4.txt -e 'var2 / var1'
 	$ ./${PROG_NAME} --vars
 	$ ./${PROG_NAME} -l iris-us-east4.txt packets_received packets_received_invalid
 EOF
@@ -87,11 +95,11 @@ main() {
 		(1>&2 echo "warning: ${LOGS_FILE} is empty")
 	fi
 
-	tmp_file1="/tmp/check_ratios.$$.1"
-	(1>&2 echo "reversing and cleaning ${LOGS_FILE} and saving in ${tmp_file1}")
-	reverse_and_clean "${LOGS_FILE}" > "${tmp_file1}"
+	tmp_file1="${TMP_DIR}/check_ratios.$$.1"
+	(1>&2 echo "cleaning ${LOGS_FILE} and saving in ${tmp_file1}")
+	clean_lines "${LOGS_FILE}" > "${tmp_file1}"
 
-	tmp_file2="/tmp/check_ratios.$$.2"
+	tmp_file2="${TMP_DIR}/check_ratios.$$.2"
 	(1>&2 echo "processing ${tmp_file1} and saving in ${tmp_file2}")
 	concat_by_vars "${VAR1}" "${VAR2}" < "${tmp_file1}" > "${tmp_file2}"
 
@@ -104,7 +112,7 @@ main() {
 	#echo "processing ${tmp_file1} and saving in ${tmp_file2}"
 	#concat_by_time 0 < "${tmp_file1}" > "${tmp_file2}"
 
-	tmp_file3="/tmp/check_ratios.$$.3"
+	tmp_file3="${TMP_DIR}/check_ratios.$$.3"
 	(1>&2 echo "checking ratios in ${tmp_file2} and saving in ${tmp_file3}")
 	check_ratios "${VAR1}" "${VAR2}" < "${tmp_file2}" > "${tmp_file3}"
 	(1>&2 echo "remove temporary files if you don't need them: rm -f ${tmp_file1} ${tmp_file2} ${tmp_file3}")
@@ -115,8 +123,8 @@ parse_args() {
 	local arg
 
 	if ! args="$(getopt \
-			--options "a:hl:" \
-			--longoptions "agent: help logs: vars" \
+			--options "a:e:hl:y" \
+			--longoptions "agent: expr: help logs: vars yes" \
 			-- "$@")"; then
 		usage 1
 	fi
@@ -131,8 +139,10 @@ parse_args() {
 		shift
 		case "${arg}" in
 		-a|--agent) AGENT_HOSTNAME="$1"; shift 1;;
+		-e|--expr) EXPR_RATIO="$1"; shift 1;;
 		-h|--help) usage 0;;
 		-l|--logs) LOGS_FILE="$1"; shift 1;;
+		-y|--yes) YES="y";;
 		--vars) printf "%s\n" "${VARIABLES[@]}"; exit 0;;
 		--) break;;
 		*) echo "internal error parsing arg=${arg}"; usage 1;;
@@ -153,12 +163,16 @@ parse_args() {
 #
 check_logs_file() {
 	local logs_file="$1"
-	local answer="n"
+	local answer="${YES}"
 
 	if [[ -f "${logs_file}" ]]; then
-		read -r -p "use the existing ${logs_file}? [Y/n] " answer
+		if [[ "${answer}" != "y" ]]; then
+			read -r -p "use the existing ${logs_file}? [Y/n] " answer
+		fi
 		if [[ "${answer}" == "" || "${answer,,}" == "y" ]]; then
-			echo "ignoring --agent ${AGENT_HOSTNAME} because logs file ${logs_file} already exists"
+			if [[ "${AGENT_HOSTNAME}" != "" ]]; then
+				echo "ignoring --agent ${AGENT_HOSTNAME} because logs file ${logs_file} already exists"
+			fi
 			return 0
 		fi
 	fi
@@ -175,15 +189,17 @@ check_logs_file() {
 }
 
 #
-# The first pass on the logs file reverses its chornological order
-# and removes excessive stuff before the date (container_id, filename,
-# ...) and variables that their value is 0.
+# Remove excessive stuff before the date (container_id, filename,
+# ...) and also the variables that their value is 0.
 #
-reverse_and_clean() {
+clean_lines() {
 	local logs_file="$1"
 
-	tac "${logs_file}" | 
-	sed -n -E -e 's/.*\[(202[0-9].*)\] \[info\] /\1 /' -e 's/([a-zA-Z_]+=0)//g' -e 's/([a-zA-Z_]+=[1-9][0-9]*)/\1 /gp'
+	sed -n -E \
+		-e 's/.*\[(202[0-9].*)\] \[info\] /\1 /' \
+		-e 's/([a-zA-Z_]+=0)//g' \
+		-e 's/([a-zA-Z_]+=[1-9][0-9]*)/\1 /gp' \
+		"${logs_file}"
 }
 
 #
@@ -260,7 +276,7 @@ check_ratios() {
 	local var1="$1"
 	local var2="$2"
 
-	awk -v var1="${var1}" -v var2="${var2}" '{
+	awk -v var1="${var1}" -v var2="${var2}" -v expr_ratio="${EXPR_RATIO}" '{
 		print $0;
 		var1_val = var2_val = 0;
 		for (i = 3; i <= NF; i++) {
@@ -272,8 +288,16 @@ check_ratios() {
 			}
 		}
 		printf("%s %s %s=%d %s=%d", $1, $2, var1, var1_val, var2, var2_val);
-		if (var2_val > 0) {
-			printf(" ratio=%.03f", var1_val / var2_val);
+		if (expr_ratio ~ "var1 / var2") {
+			if (var2_val > 0) {
+				printf(" ratio=%.03f", var1_val / var2_val);
+			}
+		} else if (expr_ratio ~ "var2 / var1") {
+			if (var1_val > 0) {
+				printf(" ratio=%.03f", var2_val / var1_val);
+			}
+		} else {
+			prtinf(" ratio=%s (invalid expression)", expr_ratio);
 		}
 		printf("\n");
 	}'
