@@ -18,6 +18,8 @@ DECLARE
 DECLARE
   agent_uuid STRING DEFAULT @agent_uuid_param;
 DECLARE
+  src_addr STRING DEFAULT @src_addr_param;
+DECLARE
   min_ttl STRING DEFAULT @min_ttl_param;
 DECLARE
   failure_probability STRING DEFAULT @failure_probability_param;
@@ -255,7 +257,7 @@ SELECT
      CAST(NULL AS STRING) AS version,
      CAST(NULL AS INT64) AS userid,
      'icmp-echo' AS method,
-     probe_src_addr AS src,
+     '%s' AS src,
      probe_dst_prefix AS dst,
      make_timestamp(MIN(first_timestamp)) AS start,
      CAST(NULL AS INT64) AS probe_size,  -- Not stored in Iris
@@ -306,8 +308,8 @@ GROUP BY
  probe_src_addr,
  probe_dst_prefix
 """, scamper1_table, iris_table, scamper1_table, measurement_uuid,
-hostname, measurement_uuid, start_time, agent_uuid, hostname, min_ttl,
-failure_probability, hostname);
+hostname, measurement_uuid, start_time, agent_uuid, hostname, src_addr,
+min_ttl, failure_probability, hostname);
 
 EXECUTE IMMEDIATE
   convert_iris_to_scamper1;
