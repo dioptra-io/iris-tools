@@ -6,7 +6,7 @@ shopt -s nullglob
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
+CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/settings.conf" # --config
 FORCE=false # --force
 POSITIONAL_ARGS=()
 

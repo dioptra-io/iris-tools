@@ -1,1 +1,5 @@
-cache/meas_md_all.json
+cache/meas_md_all.txt
+conf/data_all.*
+conf/metadata_all.*
+conf/publish_data.conf.bak
+conf/publish_metadata.conf.bak

@@ -6,7 +6,7 @@ shopt -s nullglob
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/tables.conf" # --config
+CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/settings.conf" # --config
 POSITIONAL_ARGS=()
 
 
@@ -25,14 +25,10 @@ EOF
 }
 
 main() {
-	local bq_metadata_table
-	local resources
-	local resource
 	local bq_public_table
 	local meas_md_tmpfile
 	local meas_uuid
 	local table_prefix
-	local query
 
 	parse_args "$@"
 	echo "sourcing ${CONFIG_FILE}"
@@ -40,19 +36,20 @@ main() {
 	source "${CONFIG_FILE}"
 	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
-	# Check if GCP_INSTANCES is provided and the corresponding file exists
-	[[ -n "${GCP_INSTANCES}" ]] && [[ ! -f "${GCP_INSTANCES}" ]] && { echo "error: File does not exist: ${GCP_INSTANCES}" >&2; exit 1; }
 
-	# check if datasets and metadata table exist
-	bq_metadata_table="${BQ_PUBLIC_DATASET}.${BQ_METADATA_TABLE:?unset BQ_METADATA_TABLE}"
-	resources=("${BQ_PUBLIC_DATASET}" "${BQ_PRIVATE_DATASET}" "${bq_metadata_table}")
-	echo "checking ${resources[*]}"
-	for resource  in "${resources[@]}"; do
-		if ! check_dataset_or_table "${resource}"; then
-			echo "error: ${resource} does not exist"
-			exit 1
-		fi
-	done
+	# check if  the dataset for inserting measurement data in scamper1 format exists
+	echo "checking ${BQ_PUBLIC_DATASET}"
+	if ! check_dataset_or_table "${BQ_PUBLIC_DATASET}"; then
+		echo "error: ${BQ_PUBLIC_DATASET} does not exist"
+		exit 1
+	fi
+
+	# check if  the dataset for uploading temporary iris tables exists
+        echo "checking ${BQ_PRIVATE_DATASET}"
+        if ! check_dataset_or_table "${BQ_PRIVATE_DATASET}"; then
+		echo "error: ${BQ_PRIVATE_DATASET} does not exist"
+		exit 1
+	fi
 
 	# create the table for inserting measurement data in scamper1 format  if it doesn't exist
 	bq_public_table="${BQ_PUBLIC_DATASET}"."${BQ_PUBLIC_TABLE:?unset BQ_PUBLIC_TABLE}"
@@ -65,15 +62,9 @@ main() {
 	fi
 
 	echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
-	meas_md_tmpfile="$(mktemp /tmp/upload_tables.XXXX)"
+	meas_md_tmpfile="$(mktemp /tmp/upload_data.XXXX)"
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
-		# first check if meas_uuid is in BQ_METADATA_TABLE
-		echo "checking ${meas_uuid} in ${bq_metadata_table}"
-		if ! check_uuid_in_metadata "${meas_uuid}" "${bq_metadata_table}"; then
-			echo "${meas_uuid} is not in ${bq_metadata_table}"
-			exit 1
-		fi
-		# then  get the metadata of this measurement
+		# first get the metadata of this measurement
 		irisctl meas --uuid "${meas_uuid}" -o > "${meas_md_tmpfile}"
 		# now upload this measurement's tables
 		for table_prefix in "${TABLES_TO_UPLOAD[@]}"; do
@@ -82,12 +73,8 @@ main() {
 				return 1
 			fi
 			echo "uploading ${meas_uuid} ${table_prefix}" tables
-			upload_tables "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"
+			upload_data "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"
 			echo
-		# finally, update where_published field in BQ_METADATA_TABLE
-		query="${UPDATE_WHERE_PUBLISHED//\$\{meas_uuid\}/$meas_uuid}"
-		echo "bq query --use_legacy_sql=false --project_id=${GCP_PROJECT_ID} ${query}"
-		bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" "${query}"
 		done
 	done
 	rm -f "${meas_md_tmpfile}"
@@ -102,22 +89,7 @@ check_dataset_or_table() {
         fi
 }
 
-check_uuid_in_metadata() {
-	local meas_uuid="$1"
-	local bq_metadata_table="$2"
-	local query
-	local query_result
-
-	query="SELECT COUNT(*) FROM \`${bq_metadata_table}\` WHERE id = '${meas_uuid}'"
-	echo "${query}"
-	query_result=$(bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}" | tail -n 1)
-	echo "${query_result}"
-	if [[ "${query_result}" == "0" ]]; then
-		return 1
-	fi
-}
-
-upload_tables() {
+upload_data() {
 	local meas_uuid="$1"
 	local meas_md_tmpfile="$2"
 	local table_prefix="$3"
@@ -172,7 +144,6 @@ convert_and_insert_values() {
 	local start_time
 	local MD_FIELDS=()
 	local md_fields
-	local src_addr
 
 	# get the metadata of this measurement
 	agent="$(echo "${bq_tmp_table}" | sed -e 's/.*__\(........_...._...._...._............\)/\1/' | tr '_' '-')"
@@ -201,21 +172,6 @@ convert_and_insert_values() {
 		return 1
 	fi
 
-	# get external ipv4 address
-	if  [[ -n "${GCP_INSTANCES}" ]]; then
-		if ! grep -q "${MD_VALUES[1]}" "${GCP_INSTANCES}"; then
-			echo "error: ${MD_VALUES[1]} is not in ${GCP_INSTANCES}"
-			return 1
-		fi
-		src_addr="$(awk -v agent="${MD_VALUES[1]}" '$0 ~ agent {print $5}' "${GCP_INSTANCES}")"
-	else
-		src_addr="$(jq -r ".agents[${index}].agent_parameters.external_ipv4_address" "${meas_md_tmpfile}")"
-	fi
-	if [[ ! "${src_addr}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-		echo "error: ${src_addr} is not a valid external IPv4 address"
-		return 1
-	fi
-
 	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
 		--parameter="scamper1_table_name_param:STRING:${BQ_PUBLIC_DATASET}.${BQ_PUBLIC_TABLE}" \
@@ -224,7 +180,6 @@ convert_and_insert_values() {
 		--parameter="start_time_param:STRING:${start_time}" \
 		--parameter="agent_uuid_param:STRING:${MD_VALUES[0]}" \
 		--parameter="host_param:STRING:${MD_VALUES[1]}" \
-		--parameter="src_addr_param:STRING:${src_addr}" \
 		--parameter="min_ttl_param:STRING:${MD_VALUES[2]}" \
 		--parameter="failure_probability_param:STRING:${MD_VALUES[3]}" \
 		< "${TABLE_CONVERSION_QUERY}"
