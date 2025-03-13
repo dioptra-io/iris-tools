@@ -25,10 +25,14 @@ EOF
 }
 
 main() {
+	local bq_metadata_table
+	local resources
+	local resource
 	local bq_public_table
 	local meas_md_tmpfile
 	local meas_uuid
 	local table_prefix
+	local query
 
 	parse_args "$@"
 	echo "sourcing ${CONFIG_FILE}"
@@ -37,19 +41,16 @@ main() {
 	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
 
-	# check if  the dataset for inserting measurement data in scamper1 format exists
-	echo "checking ${BQ_PUBLIC_DATASET}"
-	if ! check_dataset_or_table "${BQ_PUBLIC_DATASET}"; then
-		echo "error: ${BQ_PUBLIC_DATASET} does not exist"
-		exit 1
-	fi
-
-	# check if  the dataset for uploading temporary iris tables exists
-        echo "checking ${BQ_PRIVATE_DATASET}"
-        if ! check_dataset_or_table "${BQ_PRIVATE_DATASET}"; then
-		echo "error: ${BQ_PRIVATE_DATASET} does not exist"
-		exit 1
-	fi
+	# check if datasets and metadata table exist
+	bq_metadata_table="${BQ_PUBLIC_DATASET}.${BQ_METADATA_TABLE:?unset BQ_METADATA_TABLE}"
+	resources=("${BQ_PUBLIC_DATASET}" "${BQ_PRIVATE_DATASET}" "${bq_metadata_table}")
+	echo "checking ${resources[*]}"
+	for resource  in "${resources[@]}"; do
+		if ! check_dataset_or_table "${resource}"; then
+			echo "error: ${resource} does not exist"
+			exit 1
+		fi
+	done
 
 	# create the table for inserting measurement data in scamper1 format  if it doesn't exist
 	bq_public_table="${BQ_PUBLIC_DATASET}"."${BQ_PUBLIC_TABLE:?unset BQ_PUBLIC_TABLE}"
@@ -64,7 +65,13 @@ main() {
 	echo "tables to upload: ${TABLES_TO_UPLOAD[*]}"
 	meas_md_tmpfile="$(mktemp /tmp/upload_data.XXXX)"
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
-		# first get the metadata of this measurement
+		# first check if meas_uuid is in BQ_METADATA_TABLE
+		echo "checking ${meas_uuid} in ${bq_metadata_table}"
+		if ! check_uuid_in_metadata "${meas_uuid}" "${bq_metadata_table}"; then
+			echo "${meas_uuid} is not in ${bq_metadata_table}"
+			exit 1
+		fi
+		# then  get the metadata of this measurement
 		irisctl meas --uuid "${meas_uuid}" -o > "${meas_md_tmpfile}"
 		# now upload this measurement's tables
 		for table_prefix in "${TABLES_TO_UPLOAD[@]}"; do
@@ -75,6 +82,10 @@ main() {
 			echo "uploading ${meas_uuid} ${table_prefix}" tables
 			upload_data "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"
 			echo
+		# finally, update where_published field in BQ_METADATA_TABLE
+		query="${UPDATE_WHERE_PUBLISHED//\$\{meas_uuid\}/$meas_uuid}"
+		echo "bq query --use_legacy_sql=false --project_id=${GCP_PROJECT_ID} ${query}"
+		bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" "${query}"
 		done
 	done
 	rm -f "${meas_md_tmpfile}"
@@ -87,6 +98,21 @@ check_dataset_or_table() {
         if ! bq show --project_id="${GCP_PROJECT_ID}" "${resource}" > /dev/null 2>&1; then
                 return 1
         fi
+}
+
+check_uuid_in_metadata() {
+	local meas_uuid="$1"
+	local bq_metadata_table="$2"
+	local query
+	local query_result
+
+	query="SELECT COUNT(*) FROM \`${bq_metadata_table}\` WHERE id = '${meas_uuid}'"
+	echo "${query}"
+	query_result=$(bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}" | tail -n 1)
+	echo "${query_result}"
+	if [[ "${query_result}" == "0" ]]; then
+		return 1
+	fi
 }
 
 upload_data() {

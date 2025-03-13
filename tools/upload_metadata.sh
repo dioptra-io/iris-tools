@@ -4,7 +4,7 @@ set -eu
 set -o pipefail
 shellcheck "$0" # exits if shellcheck doesn't pass
 
-CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/metadata_table.conf" # --config
+CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/settings.conf" # --config
 FORCE=false # --force
 
 main() {
@@ -59,8 +59,8 @@ main() {
 	echo "uploading metadata to ${bq_tmp_table} table"
 	upload_tmp_metadata "${tmpfile}" "${bq_tmp_table}"
 
-	# Upload metadata to BQ_PUBLIC_TABLE.
-	bq_public_table="${BQ_PUBLIC_DATASET}"."${BQ_PUBLIC_TABLE:?unset BQ_PUBLIC_TABLE}"
+	# Upload metadata to BQ_METADATA_TABLE.
+	bq_public_table="${BQ_PUBLIC_DATASET}"."${BQ_METADATA_TABLE:?unset BQ_METADATA_TABLE}"
 	echo "uploading metadata to ${bq_public_table}"
 	upload_public_metadata "${bq_public_table}" "${bq_tmp_table}"
 
@@ -97,7 +97,7 @@ select_measurements() {
 	local irisctl_cmd=("irisctl" "list")
 
 	# add flags to the command line for selecing measurements
-	[[ ${#MEAS_TAG[@]} -gt 0 ]] && for tag in "${MEAS_TAG[@]}"; do irisctl_cmd+=("--tag" "$tag"); done
+	[[ -n "${MEAS_TAG}" ]] && irisctl_cmd+=("--before" "${MEAS_BEFORE}")
 	[[ -n "${MEAS_BEFORE}" ]] && irisctl_cmd+=("--before" "${MEAS_BEFORE}")
 	[[ -n "${MEAS_AFTER}" ]] && irisctl_cmd+=("--after" "${MEAS_AFTER}")
 	[[ ${#MEAS_STATES[@]} -gt 0 ]] && for state in "${MEAS_STATES[@]}"; do irisctl_cmd+=("--state" "$state"); done
@@ -173,7 +173,7 @@ SELECT
     ) AS sw_versions,
     ${IPV4} AS IPv4,
     ${IPV6} AS IPv6,
-    ${WHERE_PUBLISHED} AS where_published
+    False AS where_published
 FROM \`${bq_tmp_table}\` tmp_metadata
 WHERE NOT EXISTS (
     SELECT 1
