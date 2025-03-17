@@ -18,6 +18,6 @@
   "type": "RECORD"
   },
   { "name": "IPv4", "type": "BOOLEAN", "mode": "NULLABLE" },
-  { "name": "IPv6", "type": "BOOLEAN", "mode": "NULLABLE"},
-  { "name": "where_published", "type": "STRING", "mode": "REPEATED" }
+  { "name": "IPv6", "type": "BOOLEAN", "mode": "NULLABLE" },
+  { "name": "is_published", "type": "BOOLEAN", "mode": "NULLABLE" }
 ]
