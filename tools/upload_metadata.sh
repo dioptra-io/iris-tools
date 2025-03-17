@@ -173,7 +173,7 @@ SELECT
     ) AS sw_versions,
     ${IPV4} AS IPv4,
     ${IPV6} AS IPv6,
-    False AS where_published
+    False AS is_published
 FROM \`${bq_tmp_table}\` tmp_metadata
 WHERE NOT EXISTS (
     SELECT 1

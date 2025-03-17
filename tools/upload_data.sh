@@ -26,7 +26,6 @@ EOF
 
 main() {
 	local bq_metadata_table
-	local resources
 	local resource
 	local bq_public_table
 	local meas_md_tmpfile
@@ -43,9 +42,8 @@ main() {
 
 	# check if datasets and metadata table exist
 	bq_metadata_table="${BQ_PUBLIC_DATASET}.${BQ_METADATA_TABLE:?unset BQ_METADATA_TABLE}"
-	resources=("${BQ_PUBLIC_DATASET}" "${BQ_PRIVATE_DATASET}" "${bq_metadata_table}")
-	echo "checking ${resources[*]}"
-	for resource  in "${resources[@]}"; do
+	echo "checking datasets and tables"
+	for resource in "${BQ_PUBLIC_DATASET}" "${BQ_PRIVATE_DATASET}" "${bq_metadata_table}"; do
 		if ! check_dataset_or_table "${resource}"; then
 			echo "error: ${resource} does not exist"
 			exit 1
@@ -83,7 +81,7 @@ main() {
 			upload_data "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"
 			echo
 		# finally, update where_published field in BQ_METADATA_TABLE
-		query="${UPDATE_WHERE_PUBLISHED//\$\{meas_uuid\}/$meas_uuid}"
+		query="${UPDATE_IS_PUBLISHED//\$\{meas_uuid\}/$meas_uuid}"
 		echo "bq query --use_legacy_sql=false --project_id=${GCP_PROJECT_ID} ${query}"
 		bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" "${query}"
 		done
