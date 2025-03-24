@@ -392,8 +392,8 @@ publish_metadata() {
 	info 1 "selected ${METADATA_UUID} to publish its metadata"
 
 	# Publish the measurement's metadata.
-	info 1 "${PROCESS_MEASUREMENTS} upload_metadata ${METADATA_UUID}"
-	if ! "${PROCESS_MEASUREMENTS}" upload_metadata "${METADATA_UUID}"; then
+	info 1 "${PROCESS_MEASUREMENTS} publish_metadata ${METADATA_UUID}"
+	if ! "${PROCESS_MEASUREMENTS}" publish_metadata "${METADATA_UUID}"; then
 		fatal "failed to publish metadata of ${METADATA_UUID}"
 	fi
 
@@ -683,8 +683,8 @@ publish_cur_set() {
 
 	info 1 "publishing the current set"
 	for uuid in "${DATA_PUBLISHED_CUR_SET[@]}"; do
-		info 2 "${PROCESS_MEASUREMENTS}" upload_data "${uuid}"
-		if ! "${PROCESS_MEASUREMENTS}" upload_data "${uuid}"; then
+		info 2 "${PROCESS_MEASUREMENTS}" publish_data "${uuid}"
+		if ! "${PROCESS_MEASUREMENTS}" publish_data "${uuid}"; then
 			fatal "failed to publish data of ${uuid}"
 		fi
 		_=$(( DATA_PUBLISHED_TOT_NUM++ ))
