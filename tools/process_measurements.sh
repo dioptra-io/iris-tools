@@ -5,12 +5,19 @@ set -o pipefail
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/settings.conf" # --config
-INPUT_FILE="" # --input
-POSITIONAL_ARGS=() # <uuid>... (if any)
-DO_EXPORT_TABLES=false # export_tables
-DO_UPLOAD_METADATA=false # upload_metadata
-DO_UPLOAD_DATA=false # upload_data
+readonly TOPLEVEL="$(git rev-parse --show-toplevel)"
+
+#
+# Global variables to support command line flags.
+#
+CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"	# --config
+DRY_RUN=false					# --dry-run
+INPUT_FILE=""					# --input
+DO_PUBLISH_METADATA=false			# publish_metadata
+DO_EXPORT_RAW_TABLES=false			# export_raw_tables
+DO_EXPORT_CLEANED_TABLES=false			# export_cleaned_tables
+DO_PUBLISH_DATA=false				# publish_data
+POSITIONAL_ARGS=()				# <uuid>... (if any)
 
 
 usage() {
@@ -21,16 +28,18 @@ usage:
 	${PROG_NAME} -h
 	${PROG_NAME} [-c <config>] <command>... <uuid>...
 	${PROG_NAME} [-c <config>] -i <input-file> <command>...
-	-h, --help	print help message and exit
 	-c, --config	configuration file (default ${CONFIG_FILE})
+	-n, --dry-run	enable the dry-run mode
+	-h, --help	print help message and exit
 	-i, --input	file containing measurement UUIDs
 
-	command: export_tables, upload_metadata, upload_data (implies export_tables)
+	command: export_raw_tables, export_cleaned_tables, publish_metadata, publish_data (implies export_cleaned_tables)
 EOF
 	exit "${exit_code}"
 }
 
 main() {
+	local dryrun=""
 	local flags=()
 	local uuid
 	local n
@@ -40,6 +49,9 @@ main() {
 	# shellcheck disable=SC1090
 	source "${CONFIG_FILE}"
 
+	if ${DRY_RUN}; then
+		dryrun="info"
+	fi
 	flags=(-c "${CONFIG_FILE}")
 	n=0
 	while read -r uuid; do
@@ -47,14 +59,17 @@ main() {
 			echo "skipping invalid uuid: ${uuid}"
 			continue
 		fi
-		if ${DO_EXPORT_TABLES}; then
-			info "${EXPORT_TABLES}" "${flags[@]}" "${uuid}" # XXX
+		if ${DO_PUBLISH_METADATA}; then
+			eval ${dryrun} "${UPLOAD_METADATA}" "${flags[@]}" "${uuid}"
 		fi
-		if ${DO_UPLOAD_METADATA}; then
-			info "${UPLOAD_METADATA}" "${flags[@]}" "${uuid}" # XXX
+		if ${DO_EXPORT_RAW_TABLES}; then
+			eval ${dryrun} "${EXPORT_TABLES}" "${flags[@]}" "${uuid}"
 		fi
-		if ${DO_UPLOAD_DATA}; then
-			info "${UPLOAD_DATA}" "${flags[@]}" "${uuid}" # XXX
+		if ${DO_EXPORT_CLEANED_TABLES}; then
+			eval ${dryrun} "${EXPORT_TABLES}" "${flags[@]}" "${uuid}"
+		fi
+		if ${DO_PUBLISH_DATA}; then
+			eval ${dryrun} "${UPLOAD_DATA}" "${flags[@]}" "${uuid}"
 		fi
 		_=$(( n++ ))
 		if [[ $n -gt 1 ]]; then
@@ -77,8 +92,8 @@ parse_args() {
 	local no_cmd
 
 	if ! args="$(getopt \
-			--options "c:hi:" \
-			--longoptions "config: help input:" \
+			--options "c:hi:n" \
+			--longoptions "config: help input: dry-run" \
 			-- "$@")"; then
 		usage 1
 	fi
@@ -95,6 +110,7 @@ parse_args() {
 		shift
 		case "${arg}" in
 		-c|--config) CONFIG_FILE="$1"; shift 1;;
+		-n|--dry-run) DRY_RUN=true;;
 		-h|--help) usage 0;;
 		-i|--input) INPUT_FILE="$1"; shift 1;;
 		--) break;;
@@ -106,14 +122,19 @@ parse_args() {
 	no_cmd=true
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
-		export_tables) DO_EXPORT_TABLES=true; no_cmd=false; shift 1;;
-		upload_metadata) DO_UPLOAD_METADATA=true; no_cmd=false; shift 1;;
-		upload_data) DO_EXPORT_TABLES=true; DO_UPLOAD_DATA=true; no_cmd=false; shift 1;;
+		publish_metadata) DO_PUBLISH_METADATA=true; no_cmd=false; shift 1;;
+		export_raw_tables) DO_EXPORT_RAW_TABLES=true; no_cmd=false; shift 1;;
+		export_cleaned_tables) DO_EXPORT_CLEANED_TABLES=true; no_cmd=false; shift 1;;
+		publish_data) DO_EXPORT_CLEANED_TABLES=true; DO_PUBLISH_DATA=true; no_cmd=false; shift 1;;
 		*) if [[ "${INPUT_FILE}" != "" ]]; then echo "cannot specify both -i and positional arguments"; return 1; fi; break 1;;
 		esac
 	done
 	if ${no_cmd}; then
 		echo "specify a command"
+		return 1
+	fi
+	if ${DO_EXPORT_RAW_TABLES} && ${DO_EXPORT_CLEANED_TABLES}; then
+		echo "cannot specify both export_raw_tables and export_cleaned_tables"
 		return 1
 	fi
 	if [[ "${INPUT_FILE}" != "" && ! -f "${INPUT_FILE}" ]]; then
