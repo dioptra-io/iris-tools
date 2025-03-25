@@ -1,18 +1,20 @@
 #!/bin/bash
 
-set -eu
-set -o pipefail
-shellcheck "$0" # exits if shellcheck doesn't pass
+set -euo pipefail
+export SHELLCHECK_OPTS="--exclude=SC1090,SC2064"
+shellcheck "$0"
 
 readonly PROG_NAME="${0##*/}"
 readonly TOPLEVEL="$(git rev-parse --show-toplevel)"
+source "${TOPLEVEL}/tools/common.sh"
 
 #
-# Global variables to support command line flags.
+# Global variables to support command line flags and arguments.
 #
 CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"	# --config
 DRY_RUN=false					# --dry-run
 INPUT_FILE=""					# --input
+VERBOSE=1					# --verbose
 DO_PUBLISH_METADATA=false			# publish_metadata
 DO_EXPORT_RAW_TABLES=false			# export_raw_tables
 DO_EXPORT_CLEANED_TABLES=false			# export_cleaned_tables
@@ -20,18 +22,22 @@ DO_PUBLISH_DATA=false				# publish_data
 POSITIONAL_ARGS=()				# <uuid>... (if any)
 
 
+#
+# Print usage message and exit.
+#
 usage() {
 	local exit_code="$1"
 
 	cat <<EOF
 usage:
 	${PROG_NAME} -h
-	${PROG_NAME} [-c <config>] <command>... <uuid>...
-	${PROG_NAME} [-c <config>] -i <input-file> <command>...
+	${PROG_NAME} [-v <n>] [-c <config>] [-n] <command>... <uuid>...
+	${PROG_NAME} [-v <n>] [-c <config>] [-n] -i <input-file> <command>...
 	-c, --config	configuration file (default ${CONFIG_FILE})
 	-n, --dry-run	enable the dry-run mode
 	-h, --help	print help message and exit
 	-i, --input	file containing measurement UUIDs
+	-v, --verbose	set the verbosity level (default: ${VERBOSE})
 
 	command: export_raw_tables, export_cleaned_tables, publish_metadata, publish_data (implies export_cleaned_tables)
 EOF
@@ -39,20 +45,16 @@ EOF
 }
 
 main() {
-	local dryrun=""
 	local flags=()
-	local uuid
 	local n
+	local uuid
 
-	parse_args "$@"
-	info "sourcing ${CONFIG_FILE}"
-	# shellcheck disable=SC1090
-	source "${CONFIG_FILE}"
+	parse_cmdline_and_conf "$@"
 
-	if ${DRY_RUN}; then
-		dryrun="info"
-	fi
 	flags=(-c "${CONFIG_FILE}")
+	if ${DRY_RUN}; then
+		flags+=("--dry-run")
+	fi
 	n=0
 	while read -r uuid; do
 		if [[ ! "${uuid}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
@@ -60,16 +62,20 @@ main() {
 			continue
 		fi
 		if ${DO_PUBLISH_METADATA}; then
-			eval ${dryrun} "${UPLOAD_METADATA}" "${flags[@]}" "${uuid}"
+			log_info 1 "${UPLOAD_METADATA}" "${flags[@]}" "${uuid}"
+			"${UPLOAD_METADATA}" "${flags[@]}" "${uuid}"
 		fi
 		if ${DO_EXPORT_RAW_TABLES}; then
-			eval ${dryrun} "${EXPORT_TABLES}" "${flags[@]}" "${uuid}"
+			log_info 1 "${EXPORT_RAW_TABLES}" "${flags[@]}" "${uuid}"
+			"${EXPORT_RAW_TABLES}" "${flags[@]}" "${uuid}"
 		fi
 		if ${DO_EXPORT_CLEANED_TABLES}; then
-			eval ${dryrun} "${EXPORT_TABLES}" "${flags[@]}" "${uuid}"
+			log_info 1 "${EXPORT_CLEANED_TABLES}" "${flags[@]}" "${uuid}"
+			"${EXPORT_CLEANED_TABLES}" "${flags[@]}" "${uuid}"
 		fi
 		if ${DO_PUBLISH_DATA}; then
-			eval ${dryrun} "${UPLOAD_DATA}" "${flags[@]}" "${uuid}"
+			log_info 1 "${UPLOAD_DATA}" "${flags[@]}" "${uuid}"
+			"${UPLOAD_DATA}" "${flags[@]}" "${uuid}"
 		fi
 		_=$(( n++ ))
 		if [[ $n -gt 1 ]]; then
@@ -78,6 +84,10 @@ main() {
 	done < <(get_uuids)
 }
 
+#
+# Get the list of UUIDs to process.  UUIDs can be specified either on
+# the command line or in a file, one UUID per line.
+#
 get_uuids() {
 	if [[ "${INPUT_FILE}" != "" ]]; then
 		cat "${INPUT_FILE}"
@@ -86,25 +96,23 @@ get_uuids() {
 	fi
 }
 
-parse_args() {
+#
+# Parse the command line and the configuration file.
+#
+parse_cmdline_and_conf() {
 	local args
 	local arg
 	local no_cmd
 
 	if ! args="$(getopt \
-			--options "c:hi:n" \
-			--longoptions "config: help input: dry-run" \
+			--options "c:hi:nv:" \
+			--longoptions "config: help input: dry-run verbose:" \
 			-- "$@")"; then
 		usage 1
 	fi
 	eval set -- "${args}"
 	
-	if [[ "$#" -eq 1 ]]; then
-		echo "${PROG_NAME}: specify one or more commands"
-		usage 1
-	fi
-
-	# parse flags
+	# Parse flags.
 	while :; do
 		arg="$1"
 		shift
@@ -113,12 +121,13 @@ parse_args() {
 		-n|--dry-run) DRY_RUN=true;;
 		-h|--help) usage 0;;
 		-i|--input) INPUT_FILE="$1"; shift 1;;
+		-v|--verbose) VERBOSE="$1"; shift 1;;
 		--) break;;
-		*) echo "internal error parsing arg=${arg}"; usage 1;;
+		*) fatal "panic: error parsing arg=${arg}";;
 		esac
 	done
 
-	# parse command
+	# Parse arguments.
 	no_cmd=true
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -126,29 +135,25 @@ parse_args() {
 		export_raw_tables) DO_EXPORT_RAW_TABLES=true; no_cmd=false; shift 1;;
 		export_cleaned_tables) DO_EXPORT_CLEANED_TABLES=true; no_cmd=false; shift 1;;
 		publish_data) DO_EXPORT_CLEANED_TABLES=true; DO_PUBLISH_DATA=true; no_cmd=false; shift 1;;
-		*) if [[ "${INPUT_FILE}" != "" ]]; then echo "cannot specify both -i and positional arguments"; return 1; fi; break 1;;
+		*) break;;
 		esac
 	done
+	POSITIONAL_ARGS=("$@")
+
+	log_info 1 "sourcing ${CONFIG_FILE}"
+	source "${CONFIG_FILE}"
+
 	if ${no_cmd}; then
-		echo "specify a command"
-		return 1
+		fatal "${PROG_NAME}: specify one or more commands"
 	fi
 	if ${DO_EXPORT_RAW_TABLES} && ${DO_EXPORT_CLEANED_TABLES}; then
-		echo "cannot specify both export_raw_tables and export_cleaned_tables"
-		return 1
+		fatal "cannot specify both export_raw_tables and export_cleaned_tables"
+	fi
+	if [[ "${INPUT_FILE}" != "" && ${#POSITIONAL_ARGS[@]} -ne 0 ]]; then
+		fatal "cannot specify both -i and positional arguments"
 	fi
 	if [[ "${INPUT_FILE}" != "" && ! -f "${INPUT_FILE}" ]]; then
-		echo "${INPUT_FILE} does not exist"
-		return 1
-	fi
-	POSITIONAL_ARGS=("$@")
-	return 0
-}
-
-info() {
-	if [[ 1 -lt 0 ]]; then
-		(1>&2 echo -n -e "\033[1;31m$PROG_NAME: \033[0m")
-		(1>&2 echo -e "\033[1;34minfo: $*\033[0m")
+		fatal "${INPUT_FILE} does not exist"
 	fi
 }
 

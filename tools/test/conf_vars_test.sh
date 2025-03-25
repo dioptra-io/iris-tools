@@ -4,9 +4,9 @@ set -euo pipefail
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 TOPLEVEL="$(git rev-parse --show-toplevel)"
-SETTINGS_CONF="${TOPLEVEL}/conf/settings.conf"
+SETTINGS_CONF="conf/settings.conf"
 
-grep '^readonly' "${SETTINGS_CONF}" |
+grep '^readonly' "${TOPLEVEL}/${SETTINGS_CONF}" |
 sed -e '/PROBE_SRC_PORT_LIMIT/d' -e 's/readonly.//' -e 's/=.*//' |
 while read -r var; do
 	echo "${var}"

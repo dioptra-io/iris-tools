@@ -1,14 +1,21 @@
 #!/bin/bash
 
-set -eu
-set -o pipefail
-shopt -s nullglob
-shellcheck "$0" # exits if shellcheck doesn't pass
+set -euo pipefail
+export SHELLCHECK_OPTS="--exclude=SC1090,SC2064"
+shellcheck "$0"
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/settings.conf" # --config
-FORCE=false # --force
-POSITIONAL_ARGS=()
+readonly TOPLEVEL="$(git rev-parse --show-toplevel)"
+source "${TOPLEVEL}/tools/common.sh"
+
+#
+# Global variables to support command line flags and arguments.
+#
+CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"    # --config
+DRY_RUN=false                                   # --dry-run
+FORCE=false					# --force
+VERBOSE=1					# --verbose
+POSITIONAL_ARGS=()				# <uuid>...
 
 
 usage() {
@@ -16,10 +23,13 @@ usage() {
 
         cat <<EOF
 usage:
-        ${PROG_NAME} [-hf] [-c <config>] <uuid>...
-        -h, --help      print help message and exit
-        -f, --force     export tables even if already exported (i.e., exists in the cache)
+        ${PROG_NAME} --help
+        ${PROG_NAME} [-c <config>] [-f] [-v <n>] <uuid>...
         -c, --config    configuration file (default ${CONFIG_FILE})
+	-n, --dry-run   enable the dry-run mode
+        -f, --force     export tables even if already exported (i.e., exists in the cache)
+        -h, --help      print help message and exit
+	-v, --verbose	set the verbosity level (default: ${VERBOSE})
 
         uuid: measurement uuid
 EOF
@@ -30,28 +40,20 @@ main() {
 	local meas_uuid
 	local table_prefix
 
-        parse_args "$@"
-        echo "sourcing ${CONFIG_FILE}"
-        # shellcheck disable=SC1090
-        source "${CONFIG_FILE}"
+        parse_cmdline_and_conf "$@"
 
+	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
 	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
 		irisctl auth login
-	else
-		echo "irisctl will use IRIS_PASSWORD environment variable when invoked"
 	fi
 
-	# shellcheck disable=SC1090
-	source "${IRIS_ENV}"
-
-        echo "tables to export: ${TABLES_TO_EXPORT[*]}"
+        log_info 1 "tables to export: ${TABLES_TO_EXPORT[*]}"
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_EXPORT[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
-				echo "do not have query for exporting ${table_prefix} tables"
-				return 1
+				fatal "do not have query for exporting ${table_prefix} tables"
 			fi
-			echo exporting cleaned "${meas_uuid}" "${table_prefix}" tables
+			log_info 1 exporting cleaned "${meas_uuid}" "${table_prefix}" tables
 			export_cleaned_tables "${meas_uuid}" "${table_prefix}"
 			echo
 		done
@@ -91,7 +93,7 @@ export_cleaned_tables() {
 		fi
 		verify_free_space 10
 		mkdir -p "${EXPORT_DIR}"
-		echo "exporting cleaned ${table_name}"
+		log_info 1 "exporting cleaned ${table_name}"
 		probes_table_name="${table_name//results/probes}"
 		query="${CLEANED_RESULTS_TABLE_EXPORT//\$\{table\}/$table_name}"
 		query="${query//\$\{probes_table\}/$probes_table_name}"
@@ -109,18 +111,20 @@ verify_free_space() {
 
 	used=$(df -h . | awk 'NR==2 { print $5 }' | tr -d '%')
 	if [[ ${used} -ge $((100 - treshold)) ]]; then
-		echo "filesystem has less than ${treshold}% free space"
-		exit 1
+		fatal "filesystem has less than ${treshold}% free space"
 	fi
 }
 
-parse_args() {
+#
+# Parse the command line and the configuration file.
+#
+parse_cmdline_and_conf() {
         local args
         local arg
 
         if ! args="$(getopt \
-                        --options "c:fh" \
-                        --longoptions "config: force help" \
+                        --options "c:fhnv:" \
+                        --longoptions "config: dry-run force help verbose:" \
                         -- "$@")"; then
                 usage 1
         fi
@@ -131,18 +135,23 @@ parse_args() {
                 shift
                 case "${arg}" in
                 -c|--config) CONFIG_FILE="$1"; shift 1;;
+		-n|--dry-run) DRY_RUN=true;;
                 -f|--force) FORCE=true;;
                 -h|--help) usage 0;;
+		-v|--verbose) VERBOSE="$1"; shift 1;;
                 --) break;;
-                *) echo "internal error parsing arg=${arg}"; usage 1;;
+                *) fatal "panic: error parsing arg=${arg}";;
                 esac
         done
-
-        if [[ "$#" -eq 0 ]]; then
-                echo "${PROG_NAME}: specify at least one measurement uuid"
-                usage 1
-        fi
 	POSITIONAL_ARGS=("$@")
+
+	log_info 1 "sourcing ${CONFIG_FILE} and ${IRIS_ENV}"
+	source "${CONFIG_FILE}"
+	source "${IRIS_ENV}"
+
+	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
+                fatal "${PROG_NAME}: specify at least one measurement uuid"
+        fi
 }
 
 main "$@"

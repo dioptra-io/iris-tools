@@ -1,8 +1,8 @@
 #!/bin/bash
 
-set -eu
-set -o pipefail
-shellcheck "$0" # exits if shellcheck doesn't pass
+set -euo pipefail
+export SHELLCHECK_OPTS="--exclude=SC1090,SC2064"
+shellcheck "$0"
 
 readonly PROG_NAME="${0##*/}"
 CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/settings.conf" # --config
@@ -31,7 +31,6 @@ main() {
 
         parse_args "$@"
         echo "sourcing ${CONFIG_FILE}"
-        # shellcheck disable=SC1090
         source "${CONFIG_FILE}"
 
 	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
@@ -40,7 +39,6 @@ main() {
 		echo "irisctl will use IRIS_PASSWORD environment variable when invoked"
 	fi
 
-	# shellcheck disable=SC1090
 	source "${IRIS_ENV}"
 
 	echo "tables to clean: ${TABLES_TO_CLEAN[*]}"
