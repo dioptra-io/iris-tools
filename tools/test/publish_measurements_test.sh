@@ -9,12 +9,17 @@ readonly VERBOSE="4"
 
 rm -f "${TOPLEVEL}/conf/metadata_all" "${TOPLEVEL}/conf/data_all"
 
-NOW="2024-01-01T00:00:00"
+NOW="2025-03-22T00:00:00"
 "${PUBLISH_MEASUREMENTS}" --use-cache --now "${NOW}" --verbose "${VERBOSE}" --zero # start from scratch
-for i in {0..1736}; do
+i=0
+while :; do
 	echo "-----------------------------------------------------------------------"
 	NEW_NOW="$(date -d "${NOW} UTC + $(( i * 6 )) hours" +"%Y-%m-%dT%H:%M:%S")"
 	"${PUBLISH_MEASUREMENTS}" --use-cache --now "${NEW_NOW}" --verbose "${VERBOSE}"
+	CURRENT_TIME_SECONDS=$(date +%s)
+	NEW_NOW_SECONDS=$(date -d "$NEW_NOW" +%s)
+	if [[ $(( NEW_NOW_SECONDS - CURRENT_TIME_SECONDS )) -gt 86400 ]]; then
+		break
+	fi
+	_=$(( i++ ))
 done
-NOW="2025-04-01T00:00:00"
-echo && "${PUBLISH_MEASUREMENTS}" --use-cache --now "${NEW_NOW}" --verbose "${VERBOSE}"

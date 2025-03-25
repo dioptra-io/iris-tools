@@ -1,48 +1,89 @@
 #!/bin/bash
 
-set -eu
-set -o pipefail
-shellcheck "$0" # exits if shellcheck doesn't pass
+set -euo pipefail
+export SHELLCHECK_OPTS="--exclude=SC1090"
+shellcheck "$0"
 
-CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/settings.conf" # --config
+readonly PROG_NAME="${0##*/}"
+readonly TOPLEVEL="$(git rev-parse --show-toplevel)"
+source "${TOPLEVEL}/tools/common.sh"
+
+#
+# Global variables to support command line flags and arguments.
+#
+CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"	# --config
+DRY_RUN=false					# --dry-run
+VERBOSE=1					# --verbose
+POSITIONAL_ARGS=()				# <uuid>...
+
+
+#
+# Print usage message and exit.
+#
+usage() {
+	local exit_code="$1"
+
+	cat <<EOF
+usage:
+	${PROG_NAME} --help
+	${PROG_NAME} [-c <config>] [-v <n>] <uuid>...
+	-c, --config	configuration file (default ${CONFIG_FILE})
+	-h, --help	print help message and exit
+	-v, --verbose	set the verbosity level (default: ${VERBOSE})
+
+	uuid: measurement uuid
+EOF
+	exit "${exit_code}"
+}
 
 main() {
-	local meas_uuid="$1"
+	local meas_uuid
 	local metadata_string
 	local bq_public_table
 
-	echo "sourcing ${CONFIG_FILE}"
-	# shellcheck disable=SC1090
-	source "${CONFIG_FILE}"
+	parse_cmdline_and_conf "$@"
 
-	# check if BQ_PUBLIC_DATASET exist
-	echo "checking dataset"
+	# Check if $BQ_PUBLIC_DATASET exists.
+	log_info 1 "checking public dataset ${BQ_PUBLIC_DATASET}"
 	if ! check_dataset_or_table "${BQ_PUBLIC_DATASET:?unset BQ_PUBLIC_DATASET}"; then
-		echo "error: ${BQ_PUBLIC_DATASET} does not exist"
-		exit 1
+		fatal "${BQ_PUBLIC_DATASET} does not exist"
 	fi
 
+	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
 	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
 		irisctl auth login
-	else
-		echo "irisctl will use IRIS_PASSWORD environment variable when invoked"
-	fi
-	
-	# fetch metadata for selected measurement
-	echo "fetching metadata for ${meas_uuid}"
-	if ! metadata_string=$(irisctl list --bq --uuid "${meas_uuid}"); then
-		echo "error: failed to execute irisctl list --bq --uuid ${meas_uuid}"
-		exit 1
 	fi
 
-	# upload metadata to BQ_METADATA_TABLE
-	bq_public_table="${BQ_PUBLIC_DATASET}"."${BQ_METADATA_TABLE:?unset BQ_METADATA_TABLE}"
-	echo "uploading metadata to ${bq_public_table}"
-	upload_public_metadata "${bq_public_table}" "${metadata_string}"
+	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
+		# Fetch metadata of $meas_uuid.
+		log_info 1 "fetching metadata for ${meas_uuid}"
+		log_info 2 irisctl list --bq --uuid "${meas_uuid}"
+		# XXX irisctl may be broken because it doesn't fail when the uuid is invalid
+		if ! metadata_string=$(irisctl list --bq --uuid "${meas_uuid}"); then
+			fatal "failed to execute irisctl list --bq --uuid ${meas_uuid}"
+		fi
+		if [[ "${metadata_string}" != "${meas_uuid}"* ]]; then
+			fatal "metadata string does not look right: ${metadata_string}"
+		fi
+		log_info 1 "metadata_string=${metadata_string}"
+
+		# Upload metadata to $BQ_METADATA_TABLE.
+		bq_public_table="${BQ_PUBLIC_DATASET}"."${BQ_METADATA_TABLE:?unset BQ_METADATA_TABLE}"
+		log_info 1 "uploading metadata to ${bq_public_table}"
+		upload_public_metadata "${bq_public_table}" "${metadata_string}"
+	done
 }
 
+#
+# Return true (0) if the dataset or table exists. Return false (1) otherwise.
+#
 check_dataset_or_table() {
 	local resource="$1"
+
+	if ${DRY_RUN}; then
+		log_info 1 bq show --project_id="${GCP_PROJECT_ID}" "${resource}"
+		return 0 # pretend it exists
+	fi
 
 	if  ! bq show --project_id="${GCP_PROJECT_ID}" "${resource}" > /dev/null 2>&1; then
 		return 1
@@ -54,25 +95,25 @@ upload_public_metadata() {
 	local metadata_string="$2"
 	local metadata_array=()
 
-	# split the metadata_string into an array, using ',' as the delimiter
+	# Split the metadata_string into an array, using ',' as the delimiter.
 	IFS=',' read -r -a metadata_array <<< "$(echo "${metadata_string}" | tail -n1)"
-	echo "metadata: ${metadata_array[*]}"
+	log_info 1 "metadata: ${metadata_array[*]}"
 
-	# create BQ_METADATA_TABLE if it doesn't exist
+	# Create BQ_METADATA_TABLE if it doesn't exist.
 	if check_dataset_or_table "${bq_public_table}"; then
-		echo "${bq_public_table} already exists"
+		log_info 1 "public table ${bq_public_table} already exists"
 	else
 		create_table "${SCHEMA_METADATA_JSON}" "${bq_public_table}"
 	fi
 
-	# if meas_uuid is already in BQ_METADATA_TABLE, return
-	if ! check_uuid_in_metadata "${metadata_array[0]}" "${bq_public_table}"; then
-		echo "${metadata_array[0]} is already in ${bq_public_table}"
+	# If $meas_uuid is already in BQ_METADATA_TABLE, return.
+	if is_uuid_in_metadata "${metadata_array[0]}" "${bq_public_table}"; then
+		log_info 1 "${metadata_array[0]} already exists in ${bq_public_table}"
 		return
 	fi
 
 	# Insert rows into BQ_METADATA_TABLE.
-	# construct the SQL query
+	# Construct the SQL query.
 	SQL_QUERY="
 INSERT INTO \`${bq_public_table}\`(
   id,
@@ -106,32 +147,83 @@ VALUES(
   ${IPV6},
   False);
 "
-	# execute the query using bq
-	echo "inserting metadata into ${bq_public_table}"
-	bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" "${SQL_QUERY}"
+	if ${DRY_RUN}; then
+		log_info 1 bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" "${SQL_QUERY}"
+	else
+		# execute the query using bq
+		log_info 1 "inserting metadata into ${bq_public_table}"
+		bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" "${SQL_QUERY}"
+	fi
 }
 
 create_table() {
 	local schema="$1"
 	local table="$2"
 
-	echo bq mk --project_id "${GCP_PROJECT_ID}" --schema "${schema}" --table "${table}"
+	log_info 1 bq mk --project_id "${GCP_PROJECT_ID}" --schema "${schema}" --table "${table}"
 	bq mk --project_id "${GCP_PROJECT_ID}" --schema "${schema}" --table "${table}"
 }
 
 
-check_uuid_in_metadata() {
+#
+# Return true (0) if $meas_uuid already exists in the metadata table. Return false (1) otherwise.
+#
+is_uuid_in_metadata() {
 	local meas_uuid="$1"
 	local bq_metadata_table="$2"
 	local query
 	local query_result
 
+	log_info 1 "checking if ${meas_uuid} already exists in ${bq_metadata_table}"
 	query="SELECT COUNT(*) FROM \`${bq_metadata_table}\` WHERE id = '${meas_uuid}'"
-	echo "${query}"
+	if ${DRY_RUN}; then
+		log_info 1 bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}"
+		return 1 # pretend it doesn't exist
+	fi
 	query_result=$(bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}" | tail -n 1)
-	echo "${query_result}"
-	if [[ "${query_result}" != "0" ]]; then
+	log_info 2 "${query_result}"
+	if [[ "${query_result}" == "0" ]]; then
 		return 1
+	fi
+	return 0
+}
+
+#
+# Parse the command line and the configuration file.
+#
+parse_cmdline_and_conf() {
+	local args
+	local arg
+
+	if ! args="$(getopt \
+			--options "c:hnv:" \
+			--longoptions "config: dry-run help verbose:" \
+			-- "$@")"; then
+		usage 1
+	fi
+	eval set -- "${args}"
+
+	# Parse flags.
+	while :; do
+		arg="$1"
+		shift
+		case "${arg}" in
+		-c|--config) CONFIG_FILE="$1"; shift 1;;
+		-n|--dry-run) DRY_RUN=true;;
+		-h|--help) usage 0;;
+		-v|--verbose) VERBOSE="$1"; shift 1;;
+		--) break;;
+		*) fatal "panic: error parsing arg=${arg}";;
+		esac
+	done
+	POSITIONAL_ARGS=("$@")
+
+	log_info 1 "sourcing ${CONFIG_FILE}"
+	source "${CONFIG_FILE}"
+
+	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
+		echo "specify at least one measurement uuid"
+		usage 1
 	fi
 }
 
