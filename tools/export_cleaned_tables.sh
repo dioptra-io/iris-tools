@@ -71,6 +71,7 @@ export_cleaned_tables() {
 	local query
 
         tmpfile="$(mktemp /tmp/export_tables.XXXX)"
+        log_info 1 irisctl analyze tables --meas-uuid "${meas_uuid}" "${MEAS_MD_ALL_JSON}" -o
         irisctl analyze tables --meas-uuid "${meas_uuid}" "${MEAS_MD_ALL_JSON}" -o |
         awk -v pat="${table_prefix}" '$0 ~ pat { print $1 }' > "${tmpfile}"
 
@@ -79,6 +80,7 @@ export_cleaned_tables() {
         done < "${tmpfile}"
 
         for table_name in "${meas_tables_names[@]}"; do
+		log_info 2 "checking table_name=${table_name}"
                 if [[ "${table_name}" != "cleaned_"* ]]; then
 			if grep -q "cleaned_${table_name}" "${tmpfile}"; then
 				echo "not exporting the following table because it has a cleaned version"
@@ -99,6 +101,12 @@ export_cleaned_tables() {
 		query="${query//\$\{probes_table\}/$probes_table_name}"
 		query="${query//\$\{DATABASE_NAME\}/$DATABASE_NAME}"
 		query="${query//\$\{EXPORT_FORMAT\}/$EXPORT_FORMAT}"
+		if ${DRY_RUN}; then
+			log_info 1 clickhouse-client --user="${IRIS_CLICKHOUSE_USER}" --password="${IRIS_CLICKHOUSE_PASSWORD}" -mn "<<EOF > ${export_file}"
+			echo "${query}"
+			echo "EOF"
+			continue
+		fi
 		"${TIME[@]}" clickhouse-client --user="${IRIS_CLICKHOUSE_USER}" --password="${IRIS_CLICKHOUSE_PASSWORD}" -mn <<EOF > "${export_file}"
 ${query}
 EOF
@@ -145,8 +153,9 @@ parse_cmdline_and_conf() {
         done
 	POSITIONAL_ARGS=("$@")
 
-	log_info 1 "sourcing ${CONFIG_FILE} and ${IRIS_ENV}"
+	log_info 1 "sourcing ${CONFIG_FILE}"
 	source "${CONFIG_FILE}"
+	log_info 1 "sourcing ${IRIS_ENV}"
 	source "${IRIS_ENV}"
 
 	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then

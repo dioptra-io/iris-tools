@@ -288,8 +288,9 @@ parse_cmdline_and_conf() {
 	done
 	POSITIONAL_ARGS=("$@")
 
-	log_info 1 "sourcing ${CONFIG_FILE} and ${IRIS_ENV}"
+	log_info 1 "sourcing ${CONFIG_FILE}"
 	source "${CONFIG_FILE}"
+	log_info 1 "sourcing ${IRIS_ENV}"
 	source "${IRIS_ENV}"
 
 	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then

@@ -27,6 +27,7 @@ POSITIONAL_ARGS=()				# to pass $PROCESS_MEASUREMENTS (e.g., --dry-run)
 METADATA_ALL="${TOPLEVEL}/cache/published_metadata.txt"
 DATA_ALL="${TOPLEVEL}/cache/published_data.txt"
 MEAS_MD_ALL_TXT="${TOPLEVEL}/cache/meas_md_all.txt"
+MEAS_WORKER_FAILURES="${TOPLEVEL}/cache/meas_worker_failures.txt"
 
 #
 # Global variables in the configuration files.
@@ -95,7 +96,7 @@ main() {
 	exec 200>"${PUBLISH_LOCKFILE}"
 	if ! flock -n 200; then
 		echo "another instance of ${PROG_NAME} must be running because ${PUBLISH_LOCKFILE} is locked"
-		return
+		return 1
 	fi
 	trap 'flock -u 200; rm -f ${PULISH_LOCKFILE:-}' EXIT
 	log_info 1 "acquired lock on ${PUBLISH_LOCKFILE}"
@@ -742,7 +743,7 @@ worker_failed() {
 
 	# First get the start and end datetimes of the measurement.
         tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
-	trap 'rm -f ${tmp_file}' EXIT
+	trap "rm -f ${tmp_file}" EXIT
 	irisctl_cmd=("irisctl" "meas" "--uuid" "${uuid}" "-o")
 	log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"
 	if ! "${irisctl_cmd[@]}" > "${tmp_file}"; then
@@ -780,8 +781,8 @@ worker_failed() {
 	fi
 
 	# Sanity check. XXX
-	if grep -q "${uuid}" ../cache/meas_worker_failures.txt; then
-		error "worked_failed(): panic: ${uuid} is in ../cache/worker_failures.txt"
+	if grep -q "${uuid}" "${MEAS_WORKER_FAILURES}"; then
+		error "worked_failed(): panic: ${uuid} is in ${MEAS_WORKER_FAILURES}"
 	fi
 	log_info 2 "worker_failed(): no worker failures found for measurement ${uuid}"
 	rm -f "${tmp_file}"
