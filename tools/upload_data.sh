@@ -245,7 +245,7 @@ convert_and_insert_values() {
 		fatal "${src_addr} is not a valid external IPv4 address"
 	fi
 
-	"${TIME}" bq query --project_id="${GCP_PROJECT_ID}" \
+	"${TIME}" bq query --location=EU --project_id="${GCP_PROJECT_ID}" \
 		--use_legacy_sql=false \
 		--parameter="scamper1_table_name_param:STRING:${BQ_PUBLIC_DATASET}.${BQ_PUBLIC_TABLE}" \
 		--parameter="measurement_uuid_param:STRING:${meas_uuid}" \

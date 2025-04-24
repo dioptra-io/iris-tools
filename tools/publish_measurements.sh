@@ -26,8 +26,7 @@ POSITIONAL_ARGS=()				# to pass $PROCESS_MEASUREMENTS (e.g., --dry-run)
 #
 METADATA_ALL="${TOPLEVEL}/cache/published_metadata.txt"
 DATA_ALL="${TOPLEVEL}/cache/published_data.txt"
-MEAS_MD_ALL_TXT="${TOPLEVEL}/cache/meas_md_all.txt"
-MEAS_WORKER_FAILURES="${TOPLEVEL}/cache/meas_worker_failures.txt"
+MEAS_WORKER_FAILURES="${TOPLEVEL}/cache/meas_worker_failures.txt" # XXX should be kept current
 
 #
 # Global variables in the configuration files.
@@ -63,6 +62,7 @@ export DATA_LAST_UUID_CONSIDERED_ORIG=""
 METADATA_UUID=""	# initialized by select_metadata_uuid()
 CONSIDER_UUID=""	# initialized by select_data_uuid()
 CONSIDER_STAT=""	# initialized by select_data_uuid()
+FILES_TO_REMOVE=()
 
 
 #
@@ -86,6 +86,12 @@ usage:
 EOF
 }
 
+cleanup() {
+	log_info 1 rm -f "${FILES_TO_REMOVE[@]}" "${PUBLISH_LOCKFILE}"
+	rm -f "${FILES_TO_REMOVE[@]}" "${PUBLISH_LOCKFILE}"
+}
+trap cleanup EXIT
+
 main() {
 	local all_done=false
 
@@ -93,13 +99,18 @@ main() {
 
 	# Acquire lock before proceeding to avoid running multiple
 	# instances of this script.
-	exec 200>"${PUBLISH_LOCKFILE}"
+	set -C
+	if ! { exec 200>"${PUBLISH_LOCKFILE}"; } 2>/dev/null; then
+		echo "another instance of ${PROG_NAME} must be running because ${PUBLISH_LOCKFILE} exists"
+		return 1
+	fi
+	set +C
 	if ! flock -n 200; then
 		echo "another instance of ${PROG_NAME} must be running because ${PUBLISH_LOCKFILE} is locked"
 		return 1
 	fi
-	trap 'flock -u 200; rm -f ${PULISH_LOCKFILE:-}' EXIT
-	log_info 1 "acquired lock on ${PUBLISH_LOCKFILE}"
+	echo "$$" >> "${PUBLISH_LOCKFILE}"
+	log_info 1 "${PROG_NAME} with process ID $$ acquired lock on ${PUBLISH_LOCKFILE} at $(date)"
 
 	if ${RESTORE_PUBLISH_CONF}; then
 		restore_publish_conf
@@ -341,7 +352,8 @@ publish_measurements() {
 	fi
 
         tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
-	trap "rm -f ${tmp_file}" EXIT
+	# trap "rm -f ${tmp_file}" EXIT # XXX doesn't work!!
+	FILES_TO_REMOVE+=("${tmp_file}")
 
 	if ${PUBLISH_METADATA_DISABLED}; then
 		log_info 1 "publishing metadata is disabled"
@@ -641,6 +653,7 @@ select_data_uuid() {
 #
 create_meas_to_consider() {
 	local tmp_file="$1"
+	local creation_time
 
 	# Debugging support. XXX
 	list_publish_conf "data"
@@ -703,13 +716,13 @@ publish_cur_set() {
 		_=$(( DATA_PUBLISHED_TOT_NUM++ ))
 		log_info 2 "successfully published data of ${uuid}"
 		# Debugging support.
-		echo "${NOW}   $(grep "${uuid}" "${MEAS_MD_ALL_TXT}")" >> "${DATA_ALL}"
+		echo "${NOW}   ${uuid}" >> "${DATA_ALL}"
 	done
 	DATA_PUBLISHED_LAST_UUID="${DATA_PUBLISHED_CUR_SET[-1]}"
 	DATA_PUBLISHED_LAST_DATETIME="$(irisctl meas --uuid "${DATA_PUBLISHED_LAST_UUID}" -o |  awk -F'"' '/^  "creation_time":/ {print $4}')"
 	# Sanity check.
 	if [[ "${DATA_PUBLISHED_LAST_DATETIME}" == "" ]]; then
-		error "publish_cur_set(): failed to parse out DATA_PUBLISHED_LAST_DATETIME"
+		fatal "publish_cur_set(): failed to parse out DATA_PUBLISHED_LAST_DATETIME"
 	fi
 	DATA_NUM_DAYS_TO_WAIT=$(random_int "${MIN_DAYS_TO_WAIT}" "${MAX_DAYS_TO_WAIT}")
 	# Debugging support.
@@ -743,7 +756,8 @@ worker_failed() {
 
 	# First get the start and end datetimes of the measurement.
         tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
-	trap "rm -f ${tmp_file}" EXIT
+	# trap "rm -f ${tmp_file}" EXIT # XXX doesn't work!!
+	FILES_TO_REMOVE+=("${tmp_file}")
 	irisctl_cmd=("irisctl" "meas" "--uuid" "${uuid}" "-o")
 	log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"
 	if ! "${irisctl_cmd[@]}" > "${tmp_file}"; then
@@ -751,17 +765,17 @@ worker_failed() {
 	fi
 	start_datetime="$(awk -F'"' '/^  "start_time":/ {print $4}' "${tmp_file}")"
 	if [[ "${start_datetime}" == "" ]]; then
-		error "worker_failed(): failed to parse out start_time"
+		fatal "worker_failed(): failed to parse out start_time"
 	fi
-	start_datetime=$(date -d "${creation_time} UTC - 2 hours" +%Y-%m-%dT%H:%M:%S)
+	start_datetime=$(date -d "${start_datetime} UTC - 2 hours" +%Y-%m-%dT%H:%M:%S)
 	if [[ "${start_datetime}" != *Z ]]; then
 		start_datetime="${start_datetime}Z"
 	fi
 	end_datetime="$(awk -F'"' '/^  "end_time":/ {print $4}' "${tmp_file}")"
 	if [[ "${end_datetime}" == "" ]]; then
-		error "worker_failed(): failed to parse out end_time"
+		fatal "worker_failed(): failed to parse out end_time"
 	fi
-	end_datetime=$(date -d "${creation_time} UTC + 2 hours" +%Y-%m-%dT%H:%M:%S)
+	end_datetime=$(date -d "${end_datetime} UTC + 2 hours" +%Y-%m-%dT%H:%M:%S)
 	if [[ "${end_datetime}" != *Z ]]; then
 		end_datetime="${end_datetime}Z"
 	fi
@@ -770,19 +784,19 @@ worker_failed() {
         logcli_addr=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' iris_loki_1)
 	log_info 1 logcli --addr="http://${logcli_addr}:3100" query "{container_name=\"iris_worker_1\"}" --from="${start_datetime}" --to="${end_datetime}" --limit 1000000 "> ${tmp_file} 2> /dev/null"
 	if ! logcli --addr="http://${logcli_addr}:3100" query "{container_name=\"iris_worker_1\"}" --from="${start_datetime}" --to="${end_datetime}" --limit 1000000 > "${tmp_file}" 2> /dev/null; then
-		error "worked_failed(): failed to execute logcli"
+		fatal "worked_failed(): failed to execute logcli"
 	fi
 
 	# Finally see if there was a worker failure for this measurement.
-	log_info 3 grep -i "failed .* watch_measurement_agent ${uuid}" "${tmp_file}"
-	if grep -q -i "failed .* watch_measurement_agent ${uuid}" "${tmp_file}"; then
+	log_info 3 grep -i "failed .* watch_measurement_agent('${uuid}" "${tmp_file}"
+	if grep -q -i "failed .* watch_measurement_agent('${uuid}" "${tmp_file}"; then
 		log_info 2 "worker_failed(): there was a worker failure for measurement ${uuid}"
 		return 0
 	fi
 
 	# Sanity check. XXX
 	if grep -q "${uuid}" "${MEAS_WORKER_FAILURES}"; then
-		error "worked_failed(): panic: ${uuid} is in ${MEAS_WORKER_FAILURES}"
+		fatal "worked_failed(): panic: ${uuid} is in ${MEAS_WORKER_FAILURES}"
 	fi
 	log_info 2 "worker_failed(): no worker failures found for measurement ${uuid}"
 	rm -f "${tmp_file}"
