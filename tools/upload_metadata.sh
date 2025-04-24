@@ -180,8 +180,9 @@ is_uuid_in_metadata() {
 		log_info 1 bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}"
 		return 1 # pretend it doesn't exist
 	fi
+	log_info 1 bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}"
 	query_result=$(bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}" | tail -n 1)
-	log_info 2 "${query_result}"
+	log_info 1 "${query_result}"
 	if [[ "${query_result}" == "0" ]]; then
 		return 1
 	fi
