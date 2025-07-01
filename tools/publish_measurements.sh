@@ -11,15 +11,15 @@ source "${TOPLEVEL}/tools/common.sh"
 #
 # Global variables to support command line flags and arguments.
 #
-CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"	# --config
-DRY_RUN=false					# --dry-run
-LIST_PUBLISH_VARS=false				# --list
-NOW=""						# --now
-RESTORE_PUBLISH_CONF=false			# --restore
-USE_CACHE=false					# --use-cache
-VERBOSE=1					# --verbose
-ZERO_PUBLISH_CONF=false				# --zero
-POSITIONAL_ARGS=()				# to pass $PROCESS_MEASUREMENTS (e.g., --dry-run)
+CONFIG_FILE="${TOPLEVEL}/conf/publish_settings.conf"	# --config
+DRY_RUN=false						# --dry-run
+LIST_PUBLISH_VARS=false					# --list
+NOW=""							# --now
+RESTORE_PUBLISH_CONF=false				# --restore
+USE_CACHE=false						# --use-cache
+VERBOSE=1						# --verbose
+ZERO_PUBLISH_CONF=false					# --zero
+POSITIONAL_ARGS=()					# to pass $PROCESS_MEASUREMENTS (e.g., --dry-run)
 
 #
 # Global variables to support logging and debugging.
@@ -110,7 +110,7 @@ main() {
 		return 1
 	fi
 	echo "$$" >> "${PUBLISH_LOCKFILE}"
-	log_info 1 "${PROG_NAME} with process ID $$ acquired lock on ${PUBLISH_LOCKFILE} at $(date)"
+	log_info 1 "${PROG_NAME} ($$) acquired lock on ${PUBLISH_LOCKFILE}"
 
 	if ${RESTORE_PUBLISH_CONF}; then
 		restore_publish_conf
@@ -130,6 +130,10 @@ main() {
 	fi
 
 	source_publish_conf
+	# Remove the existing JSON Web Token (jwt) file before running the
+	# first `irisctl` command to force reauthentication and avoid using
+	# an expired token.
+	rm -f "${HOME}/.iris/jwt"
 	publish_measurements
 }
 
@@ -352,7 +356,6 @@ publish_measurements() {
 	fi
 
         tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
-	# trap "rm -f ${tmp_file}" EXIT # XXX doesn't work!!
 	FILES_TO_REMOVE+=("${tmp_file}")
 
 	if ${PUBLISH_METADATA_DISABLED}; then
@@ -509,8 +512,7 @@ try_to_publish_data() {
 	log_info 1 "try_to_publish_data(): checking if a new measurement can be added to the current set"
 	iteration=0
 	while :; do
-		# Debugging support (to be removed). XXX
-		_=$(( iteration++ ))
+		_=$(( iteration++ )) # debugging support (to be removed) XXX
 		echo "try_to_publish_data(): iteration ${iteration}"
 		if [[ ${iteration} -gt 10 ]]; then
 			fatal "try_to_publish_data(): iteration=${iteration}"
@@ -655,8 +657,7 @@ create_meas_to_consider() {
 	local tmp_file="$1"
 	local creation_time
 
-	# Debugging support. XXX
-	list_publish_conf "data"
+	list_publish_conf "data" # debugging support XXX
 
 	# If this is the very first time, assume that the last considered
 	# measurement is the most recent measurement.
@@ -679,6 +680,7 @@ create_meas_to_consider() {
 	fi
 	creation_time="$(awk -F'"' '/^  "creation_time":/ {print $4}' "${tmp_file}")"
 	if [[ "${creation_time}" == "" ]]; then
+		cp -a "${FILES_TO_REMOVE[@]}" "${TOPLEVEL}/cache" # debugging support XXX
 		fatal "create_meas_to_consider(): failed to parse out creation_time"
 	fi
 
@@ -696,8 +698,7 @@ create_meas_to_consider() {
 	fi
 
 	log_info 3 "create_meas_to_consider(): $(wc -l "${tmp_file}") measurements to consider after ${DATA_CONSIDERED_LAST_UUID}"
-	# Debugging support. XXX
-	cat "${tmp_file}"
+	cat "${tmp_file}" # debugging support XXX
 }
 
 #
@@ -756,7 +757,6 @@ worker_failed() {
 
 	# First get the start and end datetimes of the measurement.
         tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
-	# trap "rm -f ${tmp_file}" EXIT # XXX doesn't work!!
 	FILES_TO_REMOVE+=("${tmp_file}")
 	irisctl_cmd=("irisctl" "meas" "--uuid" "${uuid}" "-o")
 	log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"

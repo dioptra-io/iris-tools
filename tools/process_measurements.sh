@@ -11,15 +11,15 @@ source "${TOPLEVEL}/tools/common.sh"
 #
 # Global variables to support command line flags and arguments.
 #
-CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"	# --config
-DRY_RUN=false					# --dry-run
-INPUT_FILE=""					# --input
-VERBOSE=1					# --verbose
-DO_PUBLISH_METADATA=false			# publish_metadata
-DO_EXPORT_RAW_TABLES=false			# export_raw_tables
-DO_EXPORT_CLEANED_TABLES=false			# export_cleaned_tables
-DO_PUBLISH_DATA=false				# publish_data
-POSITIONAL_ARGS=()				# <uuid>... (if any)
+CONFIG_FILE="${TOPLEVEL}/conf/publish_settings.conf"	# --config
+DRY_RUN=false						# --dry-run
+INPUT_FILE=""						# --input
+VERBOSE=1						# --verbose
+DO_PUBLISH_METADATA=false				# publish_metadata
+DO_EXPORT_RAW_TABLES=false				# export_raw_tables
+DO_EXPORT_CLEANED_TABLES=false				# export_cleaned_tables
+DO_PUBLISH_DATA=false					# publish_data
+POSITIONAL_ARGS=()					# <uuid>... (if any)
 
 
 #

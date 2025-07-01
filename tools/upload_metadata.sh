@@ -11,10 +11,10 @@ source "${TOPLEVEL}/tools/common.sh"
 #
 # Global variables to support command line flags and arguments.
 #
-CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"	# --config
-DRY_RUN=false					# --dry-run
-VERBOSE=1					# --verbose
-POSITIONAL_ARGS=()				# <uuid>...
+CONFIG_FILE="${TOPLEVEL}/conf/publish_settings.conf"	# --config
+DRY_RUN=false						# --dry-run
+VERBOSE=1						# --verbose
+POSITIONAL_ARGS=()					# <uuid>...
 
 
 #
@@ -183,6 +183,9 @@ is_uuid_in_metadata() {
 	log_info 1 bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}"
 	query_result=$(bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}" | tail -n 1)
 	log_info 1 "${query_result}"
+	if ! [[ "${query_result}" =~ ^[0-9]+$ ]]; then
+		fatal "${query_result} is not an integer"
+	fi
 	if [[ "${query_result}" == "0" ]]; then
 		return 1
 	fi

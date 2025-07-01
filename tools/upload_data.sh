@@ -12,10 +12,10 @@ source "${TOPLEVEL}/tools/common.sh"
 #
 # Global variables to support command line flags and arguments.
 #
-CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"	# --config
-DRY_RUN=false                                   # --dry-run
-VERBOSE=1					# --verbose
-POSITIONAL_ARGS=()				# <uuid>...
+CONFIG_FILE="${TOPLEVEL}/conf/publish_settings.conf"	# --config
+DRY_RUN=falsei						# --dry-run
+VERBOSE=1i						# --verbose
+POSITIONAL_ARGS=()					# <uuid>...
 
 
 #
@@ -75,7 +75,7 @@ main() {
 	fi
 
 	log_info 2 "tables to upload: ${TABLES_TO_UPLOAD[*]}"
-        meas_md_tmpfile="$(mktemp "/tmp/${PROG_NAME}.XXXX")"
+        meas_md_tmpfile="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
 	trap "rm -f ${meas_md_tmpfile}" EXIT
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		# First check if meas_uuid is in $BQ_METADATA_TABLE.

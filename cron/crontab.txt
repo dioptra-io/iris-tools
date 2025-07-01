@@ -1,0 +1,2 @@
+0 * * * * cd /md1400-1a/clones/iris-tools && ./cron/publish_wrapper.sh >> ./logs/publish_logs.txt 2>&1
+0 */6 * * * cd /md1400-1a/clones/iris-tools && ./cron/export_wrapper.sh >> ./logs/export_logs.txt 2>&1

@@ -11,43 +11,49 @@ source "${TOPLEVEL}/tools/common.sh"
 #
 # Global variables to support command line flags and arguments.
 #
-CONFIG_FILE="${TOPLEVEL}/conf/settings.conf"    # --config
-DRY_RUN=false                                   # --dry-run
-FORCE=false					# --force
-VERBOSE=1					# --verbose
-POSITIONAL_ARGS=()				# <uuid>...
+CONFIG_FILE="${TOPLEVEL}/conf/publish_settings.conf"	# --config
+DRY_RUN=false						# --dry-run
+FORCE=false						# --force
+VERBOSE=1						# --verbose
+POSITIONAL_ARGS=()					# <uuid>...
 
 
 usage() {
-        local exit_code="$1"
+	local exit_code="$1"
 
-        cat <<EOF
+	cat <<EOF
 usage:
-        ${PROG_NAME} --help
-        ${PROG_NAME} [-c <config>] [-f] [-v <n>] <uuid>...
-        -c, --config    configuration file (default ${CONFIG_FILE})
+	${PROG_NAME} --help
+	${PROG_NAME} [-c <config>] [-f] [-v <n>] <uuid>...
+	-c, --config    configuration file (default ${CONFIG_FILE})
 	-n, --dry-run   enable the dry-run mode
-        -f, --force     export tables even if already exported (i.e., exists in the cache)
-        -h, --help      print help message and exit
-	-v, --verbose	set the verbosity level (default: ${VERBOSE})
+	-f, --force     export tables even if already exported (i.e., exists in the cache)
+	-h, --help      print help message and exit
+	-v, --verbose   set the verbosity level (default: ${VERBOSE})
 
-        uuid: measurement uuid
+	uuid: measurement uuid
 EOF
-        exit "${exit_code}"
+	exit "${exit_code}"
 }
+
+cleanup() {
+	log_info 1 rm -f "/tmp/${PROG_NAME}.$$."*
+	rm -f "/tmp/${PROG_NAME}.$$."*
+}
+trap cleanup EXIT
 
 main() {
 	local meas_uuid
 	local table_prefix
 
-        parse_cmdline_and_conf "$@"
+	parse_cmdline_and_conf "$@"
 
 	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
 	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
 		irisctl auth login
 	fi
 
-        log_info 1 "tables to export: ${TABLES_TO_EXPORT[*]}"
+	log_info 1 "tables to export: ${TABLES_TO_EXPORT[*]}"
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_EXPORT[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
@@ -61,27 +67,27 @@ main() {
 }
 
 export_cleaned_tables() {
-        local meas_uuid="$1"
-        local table_prefix="$2"
-        local tmpfile
-        local meas_tables_names=()
-        local table_name
-        local probes_table_name
+	local meas_uuid="$1"
+	local table_prefix="$2"
+	local tmpfile
+	local meas_tables_names=()
+	local table_name
+	local probes_table_name
 	local export_file
 	local query
 
-        tmpfile="$(mktemp /tmp/export_tables.XXXX)"
-        log_info 1 irisctl analyze tables --meas-uuid "${meas_uuid}" "${MEAS_MD_ALL_JSON}" -o
-        irisctl analyze tables --meas-uuid "${meas_uuid}" "${MEAS_MD_ALL_JSON}" -o |
-        awk -v pat="${table_prefix}" '$0 ~ pat { print $1 }' > "${tmpfile}"
+	tmpfile="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
+	log_info 1 irisctl analyze tables --meas-uuid "${meas_uuid}" "${MEAS_MD_ALL_JSON}" -o
+	irisctl analyze tables --meas-uuid "${meas_uuid}" "${MEAS_MD_ALL_JSON}" -o |
+	awk -v pat="${table_prefix}" '$0 ~ pat { print $1 }' > "${tmpfile}"
 
-        while IFS= read -r line; do
-                meas_tables_names+=("${line}")
-        done < "${tmpfile}"
+	while IFS= read -r line; do
+		meas_tables_names+=("${line}")
+	done < "${tmpfile}"
 
-        for table_name in "${meas_tables_names[@]}"; do
+	for table_name in "${meas_tables_names[@]}"; do
 		log_info 2 "checking table_name=${table_name}"
-                if [[ "${table_name}" != "cleaned_"* ]]; then
+		if [[ "${table_name}" != "cleaned_"* ]]; then
 			if grep -q "cleaned_${table_name}" "${tmpfile}"; then
 				echo "not exporting the following table because it has a cleaned version"
 				echo "${table_name}"
@@ -127,30 +133,30 @@ verify_free_space() {
 # Parse the command line and the configuration file.
 #
 parse_cmdline_and_conf() {
-        local args
-        local arg
+	local args
+	local arg
 
-        if ! args="$(getopt \
-                        --options "c:fhnv:" \
-                        --longoptions "config: dry-run force help verbose:" \
-                        -- "$@")"; then
-                usage 1
-        fi
-        eval set -- "${args}"
+	if ! args="$(getopt \
+			--options "c:fhnv:" \
+			--longoptions "config: dry-run force help verbose:" \
+			-- "$@")"; then
+		usage 1
+	fi
+	eval set -- "${args}"
 
-        while :; do
-                arg="$1"
-                shift
-                case "${arg}" in
-                -c|--config) CONFIG_FILE="$1"; shift 1;;
+	while :; do
+		arg="$1"
+		shift
+		case "${arg}" in
+		-c|--config) CONFIG_FILE="$1"; shift 1;;
 		-n|--dry-run) DRY_RUN=true;;
-                -f|--force) FORCE=true;;
-                -h|--help) usage 0;;
+		-f|--force) FORCE=true;;
+		-h|--help) usage 0;;
 		-v|--verbose) VERBOSE="$1"; shift 1;;
-                --) break;;
-                *) fatal "panic: error parsing arg=${arg}";;
-                esac
-        done
+		--) break;;
+		*) fatal "panic: error parsing arg=${arg}";;
+		esac
+	done
 	POSITIONAL_ARGS=("$@")
 
 	log_info 1 "sourcing ${CONFIG_FILE}"
@@ -159,8 +165,8 @@ parse_cmdline_and_conf() {
 	source "${IRIS_ENV}"
 
 	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
-                fatal "${PROG_NAME}: specify at least one measurement uuid"
-        fi
+		fatal "${PROG_NAME}: specify at least one measurement uuid"
+	fi
 }
 
 main "$@"

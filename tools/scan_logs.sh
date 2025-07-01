@@ -54,7 +54,7 @@ scan_logs() {
 	else
 		end_date="${END_DATE}"
 	fi
-	tmpfile="$(mktemp /tmp/${CONTAINER_NAME}_logs.$$.XXXX)"
+	tmpfile="$(mktemp /tmp/${PROG_NAME}.${CONTAINER_NAME}.logs.$$.XXXX)"
 	addr=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' iris_loki_1)
 	i=1
 	while [[ ! "${start_date}" > "${end_date}" ]]; do

@@ -5,7 +5,7 @@ export SHELLCHECK_OPTS="--exclude=SC1090,SC2064"
 shellcheck "$0"
 
 readonly PROG_NAME="${0##*/}"
-CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/settings.conf" # --config
+CONFIG_FILE="$(git rev-parse --show-toplevel)/conf/publish_settings.conf" # --config
 FORCE=false # --force
 POSITIONAL_ARGS=()
 
@@ -58,7 +58,7 @@ clean_tables() {
 	local meas_tables_names=()
 	local table_name
 
-	tmpfile="$(mktemp /tmp/clean_tables.XXXX)"
+	tmpfile="$(mktemp /tmp/${PROG_NAME}.$$.XXXX)"
 	irisctl analyze tables --meas-uuid "${meas_uuid}" "${MEAS_MD_ALL_JSON}" -o |
 	awk -v pat="${table_prefix}" '$0 ~ pat { print $1 }' > "${tmpfile}"
 
