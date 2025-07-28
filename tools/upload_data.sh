@@ -13,8 +13,8 @@ source "${TOPLEVEL}/tools/common.sh"
 # Global variables to support command line flags and arguments.
 #
 CONFIG_FILE="${TOPLEVEL}/conf/publish_settings.conf"	# --config
-DRY_RUN=falsei						# --dry-run
-VERBOSE=1i						# --verbose
+DRY_RUN=false						# --dry-run
+VERBOSE=1						# --verbose
 POSITIONAL_ARGS=()					# <uuid>...
 
 
