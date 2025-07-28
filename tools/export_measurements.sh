@@ -138,6 +138,8 @@ print_vars() {
 generate_new_meas_list() {
 	local all_uuids=()
 	local all_meas_file
+	local output
+	local tmp_file
 	local uuid
 	local uuid_to_ignore
 	
@@ -153,8 +155,13 @@ generate_new_meas_list() {
 		mapfile -t all_uuids < <(awk '/^[0-9a-f][0-9a-f]*/ { print $1 }' "${ALL_MEAS}")
 	else
 		all_meas_file="$(mktemp "/tmp/${PROG_NAME}.${TAG}.all.$$.XXXX")"
-		log_info 2 "irisctl list --all-users --tag ${TAG} --state finished -o > ${all_meas_file}"
-		irisctl list --all-users --tag "${TAG}" --state finished -o > "${all_meas_file}"
+		log_info 1 "irisctl list --all-users --tag ${TAG} --state finished -o > ${all_meas_file}"
+		if ! output="$(irisctl list --all-users --tag "${TAG}" --state finished -o > "${all_meas_file}")"; then
+			fatal "irisctl failed"
+		fi
+		tmp_file=$(echo "${output}" | awk '/saving in/ {print $3}')
+		log_info 1 rm "${tmp_file}"
+		rm "${tmp_file}"
 		mapfile -t all_uuids < <(awk '/^[0-9a-f][0-9a-f]*/ { print $1 }' "${all_meas_file}")
 	fi
 	log_info 2 all measurements: "${#all_uuids[@]}"
