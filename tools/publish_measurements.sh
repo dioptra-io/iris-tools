@@ -87,7 +87,7 @@ EOF
 }
 
 cleanup() {
-	log_info 1 rm -f "${FILES_TO_REMOVE[@]}" "${PUBLISH_LOCKFILE}"
+	log_info 1 "removing ${FILES_TO_REMOVE[*]} ${PUBLISH_LOCKFILE}"
 	rm -f "${FILES_TO_REMOVE[@]}" "${PUBLISH_LOCKFILE}"
 }
 trap cleanup EXIT
@@ -163,16 +163,16 @@ source_publish_conf() {
 	for var in "${METADATA_PUBLISHED_VARS[@]}" "${DATA_PUBLISHED_VARS[@]}"; do
 		if [[ "${var}" == "DATA_PUBLISHED_CUR_SET" ]]; then
 			if [[ "${DATA_PUBLISHED_CUR_SET[*]}" == *"X"* ]]; then
-				fatal "${var} is missing from the configuration files"
+				log_fatal "${var} is missing from the configuration files"
 			fi
 		else
 			if [[ "${!var}" == "X" ]]; then
-				fatal "${var} is missing from the configuration files"
+				log_fatal "${var} is missing from the configuration files"
 			fi
 		fi
 	done
 	if [[ ${#DATA_PUBLISHED_CUR_SET[@]} -gt ${DATA_SET_SIZE} ]]; then
-		fatal "DATA_PUBLISHED_CUR_SET has greater than DATA_SET_SIZE entries"
+		log_fatal "DATA_PUBLISHED_CUR_SET has greater than DATA_SET_SIZE entries"
 	fi
 
 	# Save original values in the <NAME>_ORIG counterparts.
@@ -352,7 +352,7 @@ publish_measurements() {
 	local tmp_file
 
 	if ! ${USE_CACHE} && ! create_meas_md_all_json; then
-		fatal "failed to create ${MEAS_MD_ALL_JSON}"
+		log_fatal "failed to create ${MEAS_MD_ALL_JSON}"
 	fi
 
         tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
@@ -375,7 +375,7 @@ publish_measurements() {
 	if is_publish_conf_data_modified; then
 		# Update publish data configuration file.
 		if ! update_publish_conf_data; then
-			fatal "failed to update ${PUBLISH_DATA_CONF}"
+			log_fatal "failed to update ${PUBLISH_DATA_CONF}"
 		fi
 		log_info 2 "successfully updated ${PUBLISH_DATA_CONF}"
 		list_publish_conf "data"
@@ -422,14 +422,14 @@ publish_metadata() {
 	log_info 1 "publishing metadata of ${METADATA_UUID}"
 	log_info 1 "${PROCESS_MEASUREMENTS}" ${POSITIONAL_ARGS[@]:+"${POSITIONAL_ARGS[@]}"} publish_metadata "${METADATA_UUID}"
 	if ! ${DRY_RUN} && ! "${PROCESS_MEASUREMENTS}" ${POSITIONAL_ARGS[@]:+"${POSITIONAL_ARGS[@]}"} publish_metadata "${METADATA_UUID}"; then
-		fatal "failed to publish metadata of ${METADATA_UUID}"
+		log_fatal "failed to publish metadata of ${METADATA_UUID}"
 	fi
 
 	# Update the configuration file.
 	METADATA_PUBLISHED_LAST_UUID="${METADATA_UUID}"
 	METADATA_PUBLISHED_LAST_DATETIME="$(irisctl meas --uuid "${METADATA_PUBLISHED_LAST_UUID}" -o |  awk -F'"' '/^  "creation_time":/ {print $4}')"
 	if ! update_publish_conf_metadata; then
-		fatal "failed to update ${PUBLISH_METADATA_CONF} but successfully published metadata of ${METADATA_UUID}"
+		log_fatal "failed to update ${PUBLISH_METADATA_CONF} but successfully published metadata of ${METADATA_UUID}"
 	fi
 	log_info 2 "successfully published metadata of ${METADATA_UUID} and updated ${PUBLISH_METADATA_CONF}"
 	return 0
@@ -453,7 +453,7 @@ select_metadata_uuid() {
 
 	log_info 1 "${irisctl_cmd[@]}"
 	if ! "${irisctl_cmd[@]}" > "${tmp_file}"; then
-		fatal "failed to execute ${irisctl_cmd[*]}"
+		log_fatal "failed to execute ${irisctl_cmd[*]}"
 	fi
 
 	if [[ "${METADATA_PUBLISHED_LAST_UUID:-}" == "" ]]; then
@@ -515,7 +515,7 @@ try_to_publish_data() {
 		_=$(( iteration++ )) # debugging support (to be removed) XXX
 		echo "try_to_publish_data(): iteration ${iteration}"
 		if [[ ${iteration} -gt 10 ]]; then
-			fatal "try_to_publish_data(): iteration=${iteration}"
+			log_fatal "try_to_publish_data(): iteration=${iteration}"
 		fi
 		# Create the list of measurements that we need to consider.
 		create_meas_to_consider "${tmp_file}"
@@ -534,11 +534,11 @@ try_to_publish_data() {
 			fi
 			continue
 		fi
-		fatal "try_to_publish_data(): panic: invalid CONSIDER_STAT=${CONSIDER_STAT}"
+		log_fatal "try_to_publish_data(): panic: invalid CONSIDER_STAT=${CONSIDER_STAT}"
 	done
 	# Sanity check.
 	if [[ "${CONSIDER_STAT}" != "good" ]]; then
-		fatal "try_to_publish_data(): panic: CONSIDER_STAT=${CONSIDER_STAT}, expected good"
+		log_fatal "try_to_publish_data(): panic: CONSIDER_STAT=${CONSIDER_STAT}, expected good"
 	fi
 	log_info 1 "try_to_publish_data(): selected ${CONSIDER_UUID} to add to the current set"
 	if [[ ${#DATA_PUBLISHED_CUR_SET[@]} -eq ${DATA_SET_SIZE} ]]; then
@@ -580,7 +580,7 @@ select_data_uuid() {
 	CONSIDER_UUID="$(awk -v pat="${DATA_CONSIDERED_LAST_UUID}" '$0 ~ pat { if (getline) print $1; else exit }' "${tmp_file}")"
 	# Sanity check.
 	if [[ "${CONSIDER_UUID}" == "${DATA_CONSIDERED_LAST_UUID}" ]]; then
-		fatal "select_data_uuid(): panic: CONSIDER_UUID=${CONSIDER_UUID} == DATA_CONSIDERED_LAST_UUID"
+		log_fatal "select_data_uuid(): panic: CONSIDER_UUID=${CONSIDER_UUID} == DATA_CONSIDERED_LAST_UUID"
 	fi
 	if [[ "${CONSIDER_UUID}" == "" ]]; then
 		CONSIDER_UUID="$(head -n 1 "${tmp_file}" | awk '{ print $1 }')"
@@ -601,7 +601,7 @@ select_data_uuid() {
 	irisctl_cmd=("irisctl" "meas" "--uuid" "${CONSIDER_UUID}" "-o")
 	log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"
 	if ! "${irisctl_cmd[@]}" > "${tmp_file}"; then
-		fatal "select_data_uuid(): failed to execute ${irisctl_cmd[*]}"
+		log_fatal "select_data_uuid(): failed to execute ${irisctl_cmd[*]}"
 	fi
 
 	# Ensure that all agents succeeded.
@@ -629,7 +629,7 @@ select_data_uuid() {
 			echo "previous measurement: ${DATA_PUBLISHED_CUR_SET[-1]}"
 			echo "current measurement: ${CONSIDER_UUID}"
 			echo "t_prev=${t_prev} t_cur=${t_cur}"
-			fatal "select_data_uuid(): panic: t_cur_secs=${t_cur_secs} is not greater than t_prev_secs=${t_prev_secs}"
+			log_fatal "select_data_uuid(): panic: t_cur_secs=${t_cur_secs} is not greater than t_prev_secs=${t_prev_secs}"
 		fi
 		if [[ $(( t_cur_secs - t_prev_secs )) -gt $(( 7 * 3600 )) ]]; then
 			echo "ignoring ${CONSIDER_UUID} because it was not created within 7 hours after ${DATA_PUBLISHED_CUR_SET[-1]}"
@@ -666,7 +666,7 @@ create_meas_to_consider() {
 		irisctl_cmd=("irisctl" "list" "-t" "${MEAS_TAG}" "-s" "finished" "--before" "${NOW}.000000" "${MEAS_MD_ALL_JSON}")
 		log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"
 		if ! "${irisctl_cmd[@]}" > "${tmp_file}"; then
-			fatal "create_meas_to_consider(): failed to execute ${irisctl_cmd[*]}"
+			log_fatal "create_meas_to_consider(): failed to execute ${irisctl_cmd[*]}"
 		fi
 		DATA_CONSIDERED_LAST_UUID="$(tail -n 1 "${tmp_file}" | awk '{ print $1 }')"
 		log_info 3 "create_meas_to_consider(): DATA_CONSIDERED_LAST_UUID initialized to ${DATA_CONSIDERED_LAST_UUID}"
@@ -676,12 +676,12 @@ create_meas_to_consider() {
 	irisctl_cmd=("irisctl" "meas" "--uuid" "${DATA_CONSIDERED_LAST_UUID}" "-o")
 	log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"
 	if ! "${irisctl_cmd[@]}" > "${tmp_file}"; then
-		fatal "create_meas_to_consider(): failed to execute ${irisctl_cmd[*]}"
+		log_fatal "create_meas_to_consider(): failed to execute ${irisctl_cmd[*]}"
 	fi
 	creation_time="$(awk -F'"' '/^  "creation_time":/ {print $4}' "${tmp_file}")"
 	if [[ "${creation_time}" == "" ]]; then
 		cp -a "${FILES_TO_REMOVE[@]}" "${TOPLEVEL}/cache" # debugging support XXX
-		fatal "create_meas_to_consider(): failed to parse out creation_time"
+		log_fatal "create_meas_to_consider(): failed to parse out creation_time"
 	fi
 
 	# Get the list of measurements to consider.
@@ -694,7 +694,7 @@ create_meas_to_consider() {
 	irisctl_cmd=("irisctl" "list" "-t" "${MEAS_TAG}" "-s" "finished" "--before" "${NOW}.000000" "--after" "${after}" "${MEAS_MD_ALL_JSON}")
 	log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"
 	if ! "${irisctl_cmd[@]}" > "${tmp_file}"; then
-		fatal "create_meas_to_consider(): failed to execute ${irisctl_cmd[*]}"
+		log_fatal "create_meas_to_consider(): failed to execute ${irisctl_cmd[*]}"
 	fi
 
 	log_info 3 "create_meas_to_consider(): $(wc -l "${tmp_file}") measurements to consider after ${DATA_CONSIDERED_LAST_UUID}"
@@ -712,7 +712,7 @@ publish_cur_set() {
 	for uuid in "${DATA_PUBLISHED_CUR_SET[@]}"; do
 		log_info 1 "${PROCESS_MEASUREMENTS}" ${POSITIONAL_ARGS[@]:+"${POSITIONAL_ARGS[@]}"} publish_data "${uuid}"
 		if ! ${DRY_RUN} && !  "${PROCESS_MEASUREMENTS}" ${POSITIONAL_ARGS[@]:+"${POSITIONAL_ARGS[@]}"} publish_data "${uuid}"; then
-			fatal "failed to publish data of ${uuid}"
+			log_fatal "failed to publish data of ${uuid}"
 		fi
 		_=$(( DATA_PUBLISHED_TOT_NUM++ ))
 		log_info 2 "successfully published data of ${uuid}"
@@ -723,7 +723,7 @@ publish_cur_set() {
 	DATA_PUBLISHED_LAST_DATETIME="$(irisctl meas --uuid "${DATA_PUBLISHED_LAST_UUID}" -o |  awk -F'"' '/^  "creation_time":/ {print $4}')"
 	# Sanity check.
 	if [[ "${DATA_PUBLISHED_LAST_DATETIME}" == "" ]]; then
-		fatal "publish_cur_set(): failed to parse out DATA_PUBLISHED_LAST_DATETIME"
+		log_fatal "publish_cur_set(): failed to parse out DATA_PUBLISHED_LAST_DATETIME"
 	fi
 	DATA_NUM_DAYS_TO_WAIT=$(random_int "${MIN_DAYS_TO_WAIT}" "${MAX_DAYS_TO_WAIT}")
 	# Debugging support.
@@ -761,11 +761,11 @@ worker_failed() {
 	irisctl_cmd=("irisctl" "meas" "--uuid" "${uuid}" "-o")
 	log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"
 	if ! "${irisctl_cmd[@]}" > "${tmp_file}"; then
-		fatal "failed to execute ${irisctl_cmd[*]}"
+		log_fatal "failed to execute ${irisctl_cmd[*]}"
 	fi
 	start_datetime="$(awk -F'"' '/^  "start_time":/ {print $4}' "${tmp_file}")"
 	if [[ "${start_datetime}" == "" ]]; then
-		fatal "worker_failed(): failed to parse out start_time"
+		log_fatal "worker_failed(): failed to parse out start_time"
 	fi
 	start_datetime=$(date -d "${start_datetime} UTC - 2 hours" +%Y-%m-%dT%H:%M:%S)
 	if [[ "${start_datetime}" != *Z ]]; then
@@ -773,7 +773,7 @@ worker_failed() {
 	fi
 	end_datetime="$(awk -F'"' '/^  "end_time":/ {print $4}' "${tmp_file}")"
 	if [[ "${end_datetime}" == "" ]]; then
-		fatal "worker_failed(): failed to parse out end_time"
+		log_fatal "worker_failed(): failed to parse out end_time"
 	fi
 	end_datetime=$(date -d "${end_datetime} UTC + 2 hours" +%Y-%m-%dT%H:%M:%S)
 	if [[ "${end_datetime}" != *Z ]]; then
@@ -784,7 +784,7 @@ worker_failed() {
         logcli_addr=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' iris_loki_1)
 	log_info 1 logcli --addr="http://${logcli_addr}:3100" query "{container_name=\"iris_worker_1\"}" --from="${start_datetime}" --to="${end_datetime}" --limit 1000000 "> ${tmp_file} 2> /dev/null"
 	if ! logcli --addr="http://${logcli_addr}:3100" query "{container_name=\"iris_worker_1\"}" --from="${start_datetime}" --to="${end_datetime}" --limit 1000000 > "${tmp_file}" 2> /dev/null; then
-		fatal "worked_failed(): failed to execute logcli"
+		log_fatal "worked_failed(): failed to execute logcli"
 	fi
 
 	# Finally see if there was a worker failure for this measurement.
@@ -796,7 +796,7 @@ worker_failed() {
 
 	# Sanity check. XXX
 	if grep -q "${uuid}" "${MEAS_WORKER_FAILURES}"; then
-		fatal "worked_failed(): panic: ${uuid} is in ${MEAS_WORKER_FAILURES}"
+		log_fatal "worked_failed(): panic: ${uuid} is in ${MEAS_WORKER_FAILURES}"
 	fi
 	log_info 2 "worker_failed(): no worker failures found for measurement ${uuid}"
 	rm -f "${tmp_file}"
@@ -831,7 +831,7 @@ parse_cmdline_and_conf() {
 		-v|--verbose) VERBOSE="$1"; shift 1;;
 		-z|--zero) ZERO_PUBLISH_CONF=true;;
 		--) break;;
-		*) fatal "panic: error parsing arg=${arg}";;
+		*) log_fatal "panic: error parsing arg=${arg}";;
 		esac
 	done
 	POSITIONAL_ARGS=("$@")
@@ -848,7 +848,7 @@ parse_cmdline_and_conf() {
 
 	if ${USE_CACHE}; then
 		if [[ ! -f "${MEAS_MD_ALL_JSON}" ]]; then
-			fatal "${MEAS_MD_ALL_JSON} does not exist but --use-cache is specified"
+			log_fatal "${MEAS_MD_ALL_JSON} does not exist but --use-cache is specified"
 		fi
 		log_info 2 "using cached ${MEAS_MD_ALL_JSON}"
 	fi

@@ -46,7 +46,7 @@ main() {
 	# Check if $BQ_PUBLIC_DATASET exists.
 	log_info 1 "checking public dataset ${BQ_PUBLIC_DATASET}"
 	if ! check_dataset_or_table "${BQ_PUBLIC_DATASET:?unset BQ_PUBLIC_DATASET}"; then
-		fatal "${BQ_PUBLIC_DATASET} does not exist"
+		log_fatal "${BQ_PUBLIC_DATASET} does not exist"
 	fi
 
 	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
@@ -60,10 +60,10 @@ main() {
 		log_info 2 irisctl list --bq --uuid "${meas_uuid}"
 		# XXX irisctl may be broken because it doesn't fail when the uuid is invalid
 		if ! metadata_string=$(irisctl list --bq --uuid "${meas_uuid}"); then
-			fatal "failed to execute irisctl list --bq --uuid ${meas_uuid}"
+			log_fatal "failed to execute irisctl list --bq --uuid ${meas_uuid}"
 		fi
 		if [[ "${metadata_string}" != "${meas_uuid}"* ]]; then
-			fatal "metadata string does not look right: ${metadata_string}"
+			log_fatal "metadata string does not look right: ${metadata_string}"
 		fi
 		log_info 1 "metadata_string=${metadata_string}"
 
@@ -184,7 +184,7 @@ is_uuid_in_metadata() {
 	query_result=$(bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" --format=csv "${query}" | tail -n 1)
 	log_info 1 "${query_result}"
 	if ! [[ "${query_result}" =~ ^[0-9]+$ ]]; then
-		fatal "${query_result} is not an integer"
+		log_fatal "${query_result} is not an integer"
 	fi
 	if [[ "${query_result}" == "0" ]]; then
 		return 1
@@ -217,7 +217,7 @@ parse_cmdline_and_conf() {
 		-h|--help) usage 0;;
 		-v|--verbose) VERBOSE="$1"; shift 1;;
 		--) break;;
-		*) fatal "panic: error parsing arg=${arg}";;
+		*) log_fatal "panic: error parsing arg=${arg}";;
 		esac
 	done
 	POSITIONAL_ARGS=("$@")

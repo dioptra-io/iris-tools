@@ -123,7 +123,7 @@ parse_cmdline_and_conf() {
 		-i|--input) INPUT_FILE="$1"; shift 1;;
 		-v|--verbose) VERBOSE="$1"; shift 1;;
 		--) break;;
-		*) fatal "panic: error parsing arg=${arg}";;
+		*) log_fatal "panic: error parsing arg=${arg}";;
 		esac
 	done
 
@@ -144,16 +144,16 @@ parse_cmdline_and_conf() {
 	source "${CONFIG_FILE}"
 
 	if ${no_cmd}; then
-		fatal "${PROG_NAME}: specify one or more commands"
+		log_fatal "${PROG_NAME}: specify one or more commands"
 	fi
 	if ${DO_EXPORT_RAW_TABLES} && ${DO_EXPORT_CLEANED_TABLES}; then
-		fatal "cannot specify both export_raw_tables and export_cleaned_tables"
+		log_fatal "cannot specify both export_raw_tables and export_cleaned_tables"
 	fi
 	if [[ "${INPUT_FILE}" != "" && ${#POSITIONAL_ARGS[@]} -ne 0 ]]; then
-		fatal "cannot specify both -i and positional arguments"
+		log_fatal "cannot specify both -i and positional arguments"
 	fi
 	if [[ "${INPUT_FILE}" != "" && ! -f "${INPUT_FILE}" ]]; then
-		fatal "${INPUT_FILE} does not exist"
+		log_fatal "${INPUT_FILE} does not exist"
 	fi
 }
 

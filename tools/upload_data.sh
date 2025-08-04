@@ -54,7 +54,7 @@ main() {
 	log_info 1 "checking datasets and metadata table ${BQ_PUBLIC_DATASET} ${BQ_PRIVATE_DATASET} ${bq_metadata_table}"
 	for resource in "${BQ_PUBLIC_DATASET}" "${BQ_PRIVATE_DATASET}" "${bq_metadata_table}"; do
 		if ! exists_dataset_or_table "${resource}"; then
-			fatal "${resource} does not exist"
+			log_fatal "${resource} does not exist"
 		fi
 	done
 
@@ -81,7 +81,7 @@ main() {
 		# First check if meas_uuid is in $BQ_METADATA_TABLE.
 		log_info 1 "checking ${meas_uuid} exists in ${bq_metadata_table}"
 		if ! check_uuid_in_metadata "${meas_uuid}" "${bq_metadata_table}"; then
-			fatal "${meas_uuid} does not exist in ${bq_metadata_table}"
+			log_fatal "${meas_uuid} does not exist in ${bq_metadata_table}"
 		fi
 
 		# Then  get the metadata of this measurement.
@@ -91,7 +91,7 @@ main() {
 		# Now upload this measurement's tables.
 		for table_prefix in "${TABLES_TO_UPLOAD[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
-				fatal "do not have query for uploading ${table_prefix} tables"
+				log_fatal "do not have query for uploading ${table_prefix} tables"
 			fi
 			log_info 1 "uploading ${meas_uuid} ${table_prefix}" tables
 			upload_data "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"
@@ -213,7 +213,7 @@ convert_and_insert_values() {
 	# Sanity check.
 	for v in agent index; do
 		if [[ "${!v}" == "" ]]; then
-			fatal "failed to parse ${v}"
+			log_fatal "failed to parse ${v}"
 		fi
 	done
 
@@ -229,20 +229,20 @@ convert_and_insert_values() {
 	read -r -a MD_VALUES <<< "$(jq -r ".agents[${index}] | [${md_fields}] | @tsv" "${meas_md_tmpfile}")"
 	# Sanity check.
 	if [[ ${#MD_VALUES[@]} -ne ${#MD_FIELDS[@]} ]]; then
-		fatal "expected to parse ${#MD_FIELDS[@]} values, got ${#MD_VALUES[@]} values"
+		log_fatal "expected to parse ${#MD_FIELDS[@]} values, got ${#MD_VALUES[@]} values"
 	fi
 
 	# Get the external IPv4 address of the agent.
 	if  [[ -n "${GCP_INSTANCES}" ]]; then
 		if ! grep -q "${MD_VALUES[1]}" "${GCP_INSTANCES}"; then
-			fatal "${MD_VALUES[1]} is not in ${GCP_INSTANCES}"
+			log_fatal "${MD_VALUES[1]} is not in ${GCP_INSTANCES}"
 		fi
 		src_addr="$(awk -v agent="${MD_VALUES[1]}" '$0 ~ agent {print $5}' "${GCP_INSTANCES}")"
 	else
 		src_addr="$(jq -r ".agents[${index}].agent_parameters.external_ipv4_address" "${meas_md_tmpfile}")"
 	fi
 	if [[ ! "${src_addr}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-		fatal "${src_addr} is not a valid external IPv4 address"
+		log_fatal "${src_addr} is not a valid external IPv4 address"
 	fi
 
 	"${TIME}" bq query --location=EU --project_id="${GCP_PROJECT_ID}" \
@@ -283,7 +283,7 @@ parse_cmdline_and_conf() {
 		-h|--help) usage 0;;
 		-v|--verbose) VERBOSE="$1"; shift 1;;
 		--) break;;
-		*) fatal "panic: error parsing arg=${arg}";;
+		*) log_fatal "panic: error parsing arg=${arg}";;
 		esac
 	done
 	POSITIONAL_ARGS=("$@")
@@ -294,12 +294,12 @@ parse_cmdline_and_conf() {
 	source "${IRIS_ENV}"
 
 	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
-		fatal "specify at least one measurement uuid"
+		log_fatal "specify at least one measurement uuid"
 	fi
 
 	# Check if $GCP_INSTANCES is provided and the corresponding file exists.
 	if [[ -n "${GCP_INSTANCES}" && ! -f "${GCP_INSTANCES}" ]]; then
-		 fatal "${GCP_INSTANCES} does not exist"
+		 log_fatal "${GCP_INSTANCES} does not exist"
 	fi
 }
 

@@ -37,7 +37,7 @@ EOF
 }
 
 cleanup() {
-	log_info 1 rm -f "/tmp/${PROG_NAME}.$$."*
+	log_info 1 "removing /tmp/${PROG_NAME}.$$.*"
 	rm -f "/tmp/${PROG_NAME}.$$."*
 }
 trap cleanup EXIT
@@ -57,7 +57,7 @@ main() {
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_EXPORT[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
-				fatal "do not have query for exporting ${table_prefix} tables"
+				log_fatal "do not have query for exporting ${table_prefix} tables"
 			fi
 			log_info 1 exporting cleaned "${meas_uuid}" "${table_prefix}" tables
 			export_cleaned_tables "${meas_uuid}" "${table_prefix}"
@@ -125,7 +125,7 @@ verify_free_space() {
 
 	used=$(df -h . | awk 'NR==2 { print $5 }' | tr -d '%')
 	if [[ ${used} -ge $((100 - treshold)) ]]; then
-		fatal "filesystem has less than ${treshold}% free space"
+		log_fatal "filesystem has less than ${treshold}% free space"
 	fi
 }
 
@@ -154,7 +154,7 @@ parse_cmdline_and_conf() {
 		-h|--help) usage 0;;
 		-v|--verbose) VERBOSE="$1"; shift 1;;
 		--) break;;
-		*) fatal "panic: error parsing arg=${arg}";;
+		*) log_fatal "panic: error parsing arg=${arg}";;
 		esac
 	done
 	POSITIONAL_ARGS=("$@")
@@ -165,7 +165,7 @@ parse_cmdline_and_conf() {
 	source "${IRIS_ENV}"
 
 	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
-		fatal "${PROG_NAME}: specify at least one measurement uuid"
+		log_fatal "${PROG_NAME}: specify at least one measurement uuid"
 	fi
 }
 

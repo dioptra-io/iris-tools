@@ -19,8 +19,9 @@ readonly VERBOSE=1
 
 
 cleanup() {
-	log_info 2 rm -f "/tmp/${PROG_NAME}.$$."*
+	log_info 1 "removing /tmp/${PROG_NAME}.$$.*"
 	rm -f "/tmp/${PROG_NAME}.$$."*
+	log_info 1 "exited"
 	log_line
 }
 trap cleanup EXIT
@@ -46,8 +47,6 @@ main() {
 	else
 		log_info 1 "no measurements exported"
 	fi
-
-	log_info 1 "exited"
 }
 
 #
@@ -59,20 +58,24 @@ export_measurements() {
 
 	IRIS_PASSWORD="$(sops -d "${SECRETS_YML}" | yq e ".services.production.api[] | select(.user == \"${IRIS_USERNAME}\") | .pass" -)"
 	if [[ "${IRIS_PASSWORD}" == "" ]]; then
-		fatal "failed to get IRIS_PASSWORD"
+		log_fatal "failed to get IRIS_PASSWORD"
 	fi
 	export IRIS_PASSWORD
 	CLICKHOUSE_PASSWORD="$(sops -d "${SECRETS_YML}" | yq e ".services.production.clickhouse[] | select(.user == \"${CLICKHOUSE_USERNAME}\") | .pass" -)"
 	if [[ "${CLICKHOUSE_PASSWORD}" == "" ]]; then
-		fatal "failed to get CLICKHOUSE_PASSWORD"
+		log_fatal "failed to get CLICKHOUSE_PASSWORD"
 	fi
 	export CLICKHOUSE_PASSWORD
 
 	log_info 1 "${EXPORT_MEASUREMENTS} -v 2"
-	"${EXPORT_MEASUREMENTS}" -v 2
+	if "${EXPORT_MEASUREMENTS}" -v 2; then
+		log_info 0 "${EXPORT_MEASUREMENTS} exited successfully"
+	else
+		log_error "${EXPORT_MEASUREMENTS} did not exit successfully"
+	fi
 	if [[ -f "${EXPORT_LOCKFILE}" ]]; then
 		log_lock_details "${EXPORT_LOCKFILE}"
-		fatal "${EXPORT_LOCKFILE} still exists"
+		log_fatal "${EXPORT_LOCKFILE} still exists"
 	fi
 }
 

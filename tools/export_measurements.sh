@@ -64,7 +64,7 @@ EOF
 }
 
 cleanup() {
-	log_info 1 rm -f "${EXPORT_LOCKFILE}" "/tmp/${PROG_NAME}.${TAG}.all.$$."*
+	log_info 1 "removing ${EXPORT_LOCKFILE} /tmp/${PROG_NAME}.${TAG}.all.$$.*"
 	rm -f "${EXPORT_LOCKFILE}" "/tmp/${PROG_NAME}.${TAG}.all.$$."*
 }
 trap cleanup EXIT
@@ -138,7 +138,7 @@ print_vars() {
 generate_new_meas_list() {
 	local all_uuids=()
 	local all_meas_file
-	local output
+	local stderr
 	local tmp_file
 	local uuid
 	local uuid_to_ignore
@@ -149,18 +149,18 @@ generate_new_meas_list() {
 	# Otherwise, use `irisctl` to generate it.
 	if [[ "${ALL_MEAS}" != "" ]]; then
 		if [[ ! -f "${ALL_MEAS}" ]]; then
-			fatal "${ALL_MEAS} does not exist"
+			log_fatal "${ALL_MEAS} does not exist"
 		fi
 		log_info 1 using existing "${ALL_MEAS}"
 		mapfile -t all_uuids < <(awk '/^[0-9a-f][0-9a-f]*/ { print $1 }' "${ALL_MEAS}")
 	else
 		all_meas_file="$(mktemp "/tmp/${PROG_NAME}.${TAG}.all.$$.XXXX")"
 		log_info 1 "irisctl list --all-users --tag ${TAG} --state finished -o > ${all_meas_file}"
-		if ! output="$(irisctl list --all-users --tag "${TAG}" --state finished -o > "${all_meas_file}")"; then
-			fatal "irisctl failed"
+		if ! { stderr="$(irisctl list --all-users --tag "${TAG}" --state finished -o 3>&1 1>"${all_meas_file}" 2>&3)"; } 3>&1; then
+			log_fatal "irisctl failed"
 		fi
-		tmp_file=$(echo "${output}" | awk '/saving in/ {print $3}')
-		log_info 1 rm "${tmp_file}"
+		tmp_file=$(echo "${stderr}" | awk '/saving in/ {print $3}')
+		log_info 1 "removing ${tmp_file}"
 		rm "${tmp_file}"
 		mapfile -t all_uuids < <(awk '/^[0-9a-f][0-9a-f]*/ { print $1 }' "${all_meas_file}")
 	fi
@@ -170,7 +170,7 @@ generate_new_meas_list() {
 	# into $NEW_UUIDS.  Otherwise, use $all_uuids to set $NEW_UUIDS.
 	if [[ "${NEW_MEAS}" != "" ]]; then
 		if [[ ! -f "${NEW_MEAS}" ]]; then
-			fatal "${NEW_MEAS} does not exist"
+			log_fatal "${NEW_MEAS} does not exist"
 		fi
 		log_info 1 "using existing new measurements file ${NEW_MEAS}"
 		mapfile -t NEW_UUIDS < <(cat "${NEW_MEAS}")
@@ -209,13 +209,13 @@ export_new_meas() {
 	fi
 
 	if [[ ! -f "${EXPORTED_MEAS}" ]]; then
-		fatal "${EXPORTED_MEAS} does not exist"
+		log_fatal "${EXPORTED_MEAS} does not exist"
 	fi
 	if [[ "${IRIS_PASSWORD}" == "" ]]; then
-		fatal "IRIS_PASSWORD is not set"
+		log_fatal "IRIS_PASSWORD is not set"
 	fi
 	if [[ "${CLICKHOUSE_PASSWORD}" == "" ]]; then
-		fatal "${CLICKHOUSE_PASSWORD} is not set"
+		log_fatal "${CLICKHOUSE_PASSWORD} is not set"
 	fi
 
 	chmod 644 "${EXPORTED_MEAS}"
@@ -228,7 +228,7 @@ export_new_meas() {
 
 	files="$(find "${EXPORTS_DIR_TMP}" -type f -print)"
 	if [[ "${files}" == "${EXPORTS_DIR_TMP}/*" ]]; then
-		fatal "${EXPORTS_DIR_TMP} is empty"
+		log_fatal "${EXPORTS_DIR_TMP} is empty"
 	fi
 }
 
@@ -323,11 +323,11 @@ parse_cmdline() {
 		   --only-index-tmp) ONLY_INDEX_TMP=true;;
 		-v|--verbose) VERBOSE="$1"; shift 1;;
 		--) break;;
-		*) fatal "panic: error parsing arg=${arg}";;
+		*) log_fatal "panic: error parsing arg=${arg}";;
 		esac
 	done
 	if [[ $# -ne 0 ]]; then
-		fatal "invalid command line"
+		log_fatal "invalid command line"
 	fi
 }
 
