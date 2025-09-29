@@ -9,72 +9,112 @@
 set -eu
 shellcheck "$0" # exits if shellcheck doesn't pass
 
-HOSTS=(
-	iris-asia-east1
-	iris-asia-northeast1
-	iris-asia-south1
-	iris-asia-southeast1
-	iris-europe-north1
-	iris-europe-west6
-	iris-me-central1
-	iris-southamerica-east1
-	iris-us-east4
-	iris-us-west4
-)
-ZONES=(
-	asia-east1-a
-	asia-northeast1-a
-	asia-south1-a
-	asia-southeast1-a
-	europe-north1-a
-	europe-west6-a
-	me-central1-a
-	southamerica-east1-a
-	us-east4-a
-	us-west4-a
-)
+readonly PROG_NAME="${0##*/}"
+
+: "${GCP_PROJECT_ID:="mlab-edgenet"}"
+: "${IMAGE_NAME="ghcr.io/dioptra-io/iris/iris-agent:production"}"
+: "${CONTAINER_NAME="iris-agent"}"
+
+cleanup() {
+        echo rm -f "/tmp/${PROG_NAME}.$$."*
+        rm -f "/tmp/${PROG_NAME}.$$."*
+}
+trap cleanup EXIT
 
 main() {
-	for ((i=0; i<${#HOSTS[@]}; i++)); do
-	    echo "${HOSTS[${i}]}"
-	    gcloud compute ssh --project "${GCP_PROJECT_ID}" --zone "${ZONES[${i}]}" "${HOSTS[${i}]}" --command="
-			readonly IMAGE_NAME=\"ghcr.io/dioptra-io/iris/iris-agent:production\"
-			readonly CONTAINER_NAME=\"iris-agent\"
+	local tmp_file=""
+	local host=""
+	local hosts=()
+	local zone=""
+	local zones=()
 
-			#
-			# Compare the current container against the latest container image.
-			#
-			CURRENT_IMAGE_ID=\$(sudo docker inspect --format=\"{{.Image}}\" \${CONTAINER_NAME})
-			sudo docker pull \${IMAGE_NAME}
-			LATEST_IMAGE_ID=\$(sudo docker inspect --format=\"{{.Id}}\" \${IMAGE_NAME})
-			if [[ \"\${CURRENT_IMAGE_ID}\" == \"\${LATEST_IMAGE_ID}\" ]]; then
-				echo \"\${CONTAINER_NAME} is up to date\"
-				exit 0
-			fi
+	#
+	# Get the full list of all GCP VM hosts, their zones, and status.
+	#
+        tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
+	echo gcloud compute instances list --format="table(name,zone.basename():label=REGION,status)"
+	gcloud compute instances list --format="table(name,zone.basename():label=REGION,status)" > "${tmp_file}"
 
-			#
-			# Check if the container is idle.
-			#
-			# XXX This logic is fragile because the agent could
-			#     be idle between the rounds of measurements.  So,
-			#     we need to make sure that the agent is not running
-			#     any measurements.
-			#
-			LATEST_STATE=\$(sudo docker logs \${CONTAINER_NAME} 2>&1 | grep 'Setting agent state' | tail -1 | awk '{print \$NF}')
-			if [[ \"\${LATEST_STATE}\" != \"AgentState.Idle\" ]]; then
-				echo \"\${CONTAINER_NAME} is not currently idle, skipping update\"
-				exit 0
-			fi
+	#
+	# Iris agents host names follow the "iris-<region>" naming
+	# convention.  Parse out Iris agents and make sure we have
+	# equal numbers of hosts and zones.
+	#
+	# To parse out hosts and zones, we could have used mapfile
+	# but it's not available in older bash versions on macOS.
+	# mapfile -t hosts < <(sort "${tmp_file}" | awk '/^iris-/ { print $1 }')
+	# mapfile -t zones < <(sort "${tmp_file}" | awk '/^iris-/ { print $2 }')
+	#
+        while read -r host; do
+		hosts+=("${host}")
+        done < <(sort "${tmp_file}" | awk '/^iris-/ { print $1 }')
+        while read -r zone; do
+		zones+=("${zone}")
+        done < <(sort "${tmp_file}" | awk '/^iris-/ { print $2 }')
+	if [[ ${#hosts[@]} -ne ${#zones[@]} ]]; then # sanity check
+		echo "${#hosts[@]} hosts but ${#zones[@]} zones"
+		return 1
+	fi
 
-			#
-			# Stop and start the service to update the container.
-			#
-			echo \"\${CONTAINER_NAME} is idle, proceeding with update...\"
-			sudo systemctl stop \${CONTAINER_NAME}
-			sudo systemctl start \${CONTAINER_NAME}
-			echo \"\${CONTAINER_NAME} updated successfully\""
-		echo
+	#
+	# Now iterate through the hosts and skip the ones that do
+	# not follow Iris agent host naming convention (e.g.,
+	# "iris-gcp-vm").
+	#
+	for ((i=0; i<${#zones[@]}; i++)); do
+		zone="${zones[${i}]}"
+		host="iris-${zone%-*}"
+		if [[ "${hosts[${i}]}" != "${host}" ]]; then
+			echo skipping "${hosts[${i}]}"
+			continue
+		fi
+		update_agent "${host}" "${zone}"
+		return 0
 	done
+}
+
+update_agent() {
+	local host="$1"
+	local zone="$2"
+
+	gcloud compute ssh --project "${GCP_PROJECT_ID}" --zone "${zone}" "${host}" --command="
+		readonly IMAGE_NAME=\"${IMAGE_NAME}\"
+		readonly CONTAINER_NAME=\"${CONTAINER_NAME}\"
+
+		#
+		# Compare the current container against the latest container image.
+		#
+		CURRENT_IMAGE_ID=\$(sudo docker inspect --format=\"{{.Image}}\" \${CONTAINER_NAME})
+		sudo docker pull \${IMAGE_NAME}
+		LATEST_IMAGE_ID=\$(sudo docker inspect --format=\"{{.Id}}\" \${IMAGE_NAME})
+		if [[ \"\${CURRENT_IMAGE_ID}\" == \"\${LATEST_IMAGE_ID}\" ]]; then
+			echo \"\${CONTAINER_NAME} is up to date\"
+			exit 0
+		fi
+
+		#
+		# Check if the container is idle.
+		#
+		# XXX This logic is fragile because the agent could
+		#     be idle between the rounds of measurements.  So,
+		#     we need to make sure that the agent is not running
+		#     any measurements.  The best way to do this is to
+		#     query PostgreSQL or use irisctl.
+		#
+		LATEST_STATE=\$(sudo docker logs \${CONTAINER_NAME} 2>&1 | grep 'Setting agent state' | tail -1 | awk '{print \$NF}')
+		if [[ \"\${LATEST_STATE}\" != \"AgentState.Idle\" ]]; then
+			echo \"\${CONTAINER_NAME} is not currently idle, skipping update\"
+			exit 0
+		fi
+
+		#
+		# Stop and start the service to update the container.
+		#
+		echo \"\${CONTAINER_NAME} is idle, proceeding with update...\"
+		sudo systemctl stop \${CONTAINER_NAME}
+		sudo systemctl start \${CONTAINER_NAME}
+		echo \"\${CONTAINER_NAME} updated successfully\""
+	echo
 }
 
 main "$@"
