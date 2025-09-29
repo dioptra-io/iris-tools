@@ -355,7 +355,7 @@ publish_measurements() {
 		log_fatal "failed to create ${MEAS_MD_ALL_JSON}"
 	fi
 
-        tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
+	tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
 	FILES_TO_REMOVE+=("${tmp_file}")
 
 	if ${PUBLISH_METADATA_DISABLED}; then
@@ -751,12 +751,13 @@ worker_failed() {
 	local uuid="$1"
 	local tmp_file
 	local irisctl_cmd
-        local start_datetime
-        local end_datetime
-        local logcli_addr
+	local start_datetime
+	local end_datetime
+	local logcli_addr
+	local now
 
 	# First get the start and end datetimes of the measurement.
-        tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
+	tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
 	FILES_TO_REMOVE+=("${tmp_file}")
 	irisctl_cmd=("irisctl" "meas" "--uuid" "${uuid}" "-o")
 	log_info 1 "${irisctl_cmd[*]} > ${tmp_file}"
@@ -779,9 +780,14 @@ worker_failed() {
 	if [[ "${end_datetime}" != *Z ]]; then
 		end_datetime="${end_datetime}Z"
 	fi
+	# Cap end_datetime at current local time.
+	now="$(date -u +%Y-%m-%dT%H:%M:%S)Z"
+	if [[ "${end_datetime}" > "${now}" ]]; then
+		end_datetime="${now}"
+	fi
 	
 	# Now execute logcli to get the container logs.
-        logcli_addr=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' iris_loki_1)
+	logcli_addr=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' iris_loki_1)
 	log_info 1 logcli --addr="http://${logcli_addr}:3100" query "{container_name=\"iris_worker_1\"}" --from="${start_datetime}" --to="${end_datetime}" --limit 1000000 "> ${tmp_file} 2> /dev/null"
 	if ! logcli --addr="http://${logcli_addr}:3100" query "{container_name=\"iris_worker_1\"}" --from="${start_datetime}" --to="${end_datetime}" --limit 1000000 > "${tmp_file}" 2> /dev/null; then
 		log_fatal "worked_failed(): failed to execute logcli"
