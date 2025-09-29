@@ -93,8 +93,8 @@ move_measurements() {
 		(cd "${EXPORTS_DIR}" && find . \( -name "*${uuid}*" -o -name "*${uuid//-/_}*" \) -print) >> "${tmp_file}"
 	done < <(cat "${meas_exported_file}")
 
-	log_info 1 "sudo rsync --progress --files-from=${tmp_file} ${EXPORTS_DIR} ${FTP_DIR}"
-	sudo rsync --progress --files-from="${tmp_file}" "${EXPORTS_DIR}" "${FTP_DIR}"
+	log_info 1 "sudo rsync --progress --remove-source-files --files-from=${tmp_file} ${EXPORTS_DIR} ${FTP_DIR}"
+	sudo rsync --progress --remove-source-files --files-from="${tmp_file}" "${EXPORTS_DIR}" "${FTP_DIR}"
 }
 
 main "$@"
