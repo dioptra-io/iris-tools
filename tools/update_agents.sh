@@ -16,8 +16,8 @@ readonly PROG_NAME="${0##*/}"
 : "${CONTAINER_NAME="iris-agent"}"
 
 cleanup() {
-        echo rm -f "/tmp/${PROG_NAME}.$$."*
-        rm -f "/tmp/${PROG_NAME}.$$."*
+	echo rm -f "/tmp/${PROG_NAME}.$$."*
+	rm -f "/tmp/${PROG_NAME}.$$."*
 }
 trap cleanup EXIT
 
@@ -31,7 +31,7 @@ main() {
 	#
 	# Get the full list of all GCP VM hosts, their zones, and status.
 	#
-        tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
+	tmp_file="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
 	echo gcloud compute instances list --format="table(name,zone.basename():label=REGION,status)"
 	gcloud compute instances list --format="table(name,zone.basename():label=REGION,status)" > "${tmp_file}"
 
@@ -45,12 +45,12 @@ main() {
 	# mapfile -t hosts < <(sort "${tmp_file}" | awk '/^iris-/ { print $1 }')
 	# mapfile -t zones < <(sort "${tmp_file}" | awk '/^iris-/ { print $2 }')
 	#
-        while read -r host; do
+	while read -r host; do
 		hosts+=("${host}")
-        done < <(sort "${tmp_file}" | awk '/^iris-/ { print $1 }')
-        while read -r zone; do
+	done < <(sort "${tmp_file}" | awk '/^iris-/ { print $1 }')
+	while read -r zone; do
 		zones+=("${zone}")
-        done < <(sort "${tmp_file}" | awk '/^iris-/ { print $2 }')
+	done < <(sort "${tmp_file}" | awk '/^iris-/ { print $2 }')
 	if [[ ${#hosts[@]} -ne ${#zones[@]} ]]; then # sanity check
 		echo "${#hosts[@]} hosts but ${#zones[@]} zones"
 		return 1
@@ -69,7 +69,6 @@ main() {
 			continue
 		fi
 		update_agent "${host}" "${zone}"
-		return 0
 	done
 }
 
