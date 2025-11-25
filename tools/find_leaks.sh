@@ -26,7 +26,7 @@ usage() {
 	local exit_code="$1"
 
 	cat <<EOF
-Usage:
+usage:
 	${PROG_NAME} [--help]
 	${PROG_NAME} [--dry-run] [--only-leaks] [--secrets <path>] [--thorough] [--verbose] [<repo>...]
 	-h, --help		print help message and exit
@@ -38,7 +38,7 @@ Usage:
 	-u, --user-pass		print all username/password pairs and exit
 	-v, --verbose		enable verbose mode
 
-Example:
+example:
 	To list all leaked passwords in repo1 and repo2:
 	${PROG_NAME} -o -s "/path/to/secrets.yml" -t /path/to/repo1 /path/to/repo2 2> /dev/null | sed -e 's/.*://' | sort | uniq
 EOF
@@ -61,7 +61,7 @@ main() {
 
 	for repo in "${REPOS[@]}"; do
 		if [[ ! -d "${repo}/.git" ]]; then
-			echo "${repo} is not a git repo"
+			echo "${repo} is not a git repo" >&2
 			continue
 		fi
 		echo "--- checking ${repo} for leaked passwords ---" >&2
@@ -82,15 +82,32 @@ read_passwords() {
 	local val
 
 	if [[ ! -f "${SECRETS_YML}" ]]; then
-		echo "${SECRETS_YML} does not exist or is not a regular file"
+		echo "${SECRETS_YML} does not exist or is not a regular file" >&2
 		return 1
 	fi
 
-	cmd='sops -d "${SECRETS_YML}" | yq e -r '\''.. | 
-		select(has("pass") and (.pass != "none") and (has("user") or has("name"))) | 
-		((path | map(tostring) | 
-		map(select(. | test("^[0-9]+$") | not)) | 
-		join(".")) + "." + ((.user // .name) | tostring) + ": " + (.pass))'\'' -'
+	#cmd='sops -d "${SECRETS_YML}" | yq e -r '\''.. |
+	#	select(has("pass") and (.pass != "none") and (has("user") or has("name"))) |
+	#	((path | map(tostring) |
+	#	map(select(. | test("^[0-9]+$") | not)) |
+	#	join(".")) + "." + ((.user // .name) | tostring) + ": " + (.pass))'\'' -'
+	#
+	# Extract username/password pairs from nested YAML structure.
+	# The yq query:
+	#   - recursively searches for objects with a "pass" field
+	#     (not "none") and either "user" or "name".
+	#   - builds a key from the YAML path and the username.
+	#   - outputs lines in the format: <path>.<user>: <pass>.
+	#
+	cmd=$(cat <<'EOF'
+sops -d "${SECRETS_YML}" | yq e -r '
+.. |
+  select(has("pass") and (.pass != "none") and (has("user") or has("name"))) |
+  ((path | map(tostring) |
+  map(select(. | test("^[0-9]+$") | not)) |
+  join(".")) + "." + ((.user // .name) | tostring) + ": " + (.pass))' -
+EOF
+)
 	while IFS= read -r line; do
 		if [[ -z "${line}" ]]; then
 			continue
