@@ -89,20 +89,27 @@ main() {
 		irisctl meas --uuid "${meas_uuid}" -o > "${meas_md_tmpfile}"
 
 		# Now upload this measurement's tables.
+		local upload_success=true
 		for table_prefix in "${TABLES_TO_UPLOAD[@]}"; do
 			if [[ "${table_prefix}" != "results__" ]]; then
 				log_fatal "do not have query for uploading ${table_prefix} tables"
 			fi
 			log_info 1 "uploading ${meas_uuid} ${table_prefix}" tables
-			upload_data "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"
+			if ! upload_data "${meas_uuid}" "${meas_md_tmpfile}" "${table_prefix}"; then
+				upload_success=false
+			fi
 			echo
 		done
 
-		# Finally, update the is_published field in $BQ_METADATA_TABLE.
-		query="${UPDATE_IS_PUBLISHED//\$\{meas_uuid\}/$meas_uuid}"
-		log_info 1 "bq query --use_legacy_sql=false --project_id=${GCP_PROJECT_ID} ${query}"
-		if ! ${DRY_RUN}; then
-			bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" "${query}"
+		# Finally, update the is_published field in $BQ_METADATA_TABLE only if upload was successful.
+		if ${upload_success}; then
+			query="${UPDATE_IS_PUBLISHED//\$\{meas_uuid\}/$meas_uuid}"
+			log_info 1 "bq query --use_legacy_sql=false --project_id=${GCP_PROJECT_ID} ${query}"
+			if ! ${DRY_RUN}; then
+				bq query --use_legacy_sql=false --project_id="${GCP_PROJECT_ID}" "${query}"
+			fi
+		else
+			log_info 1 "skipping marking ${meas_uuid} as published due to upload failure"
 		fi
 	done
 }
@@ -155,7 +162,7 @@ upload_data() {
 	clustering="probe_dst_addr,probe_src_port,probe_ttl,reply_src_addr"
 	if [[ ${#files[@]} -eq 0 ]]; then
 		echo "no ${EXPORT_FORMAT} files in ${EXPORT_DIR} for ${meas_uuid}" # XXX isn't this a fatal error?
-		return
+		return 1
 	fi
 	echo "${SCHEMA_RESULTS}" > "${SCHEMA_RESULTS_JSON}"
 	for path in "${EXPORT_DIR}"/*"${meas_uuid//-/_}"*."${EXPORT_FORMAT}"; do
