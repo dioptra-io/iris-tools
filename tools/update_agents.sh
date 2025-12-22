@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #
 # Update the container specified by $CONTAINER_NAME if a new container
@@ -11,9 +11,14 @@ shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly PROG_NAME="${0##*/}"
 
-: "${GCP_PROJECT_ID:="mlab-edgenet"}"
-: "${IMAGE_NAME="ghcr.io/dioptra-io/iris/iris-agent:production"}"
-: "${CONTAINER_NAME="iris-agent"}"
+#
+# Global variables to support command line flags and arguments.
+#
+CONTAINER_NAME="iris-agent"					# --container
+IMAGE_NAME="ghcr.io/dioptra-io/iris/iris-agent:production"	# --image
+GCP_PROJECT_ID="mlab-edgenet"					# --project
+DRY_RUN=false							# --dry-run
+AGENTS=()							# arg...
 
 cleanup() {
 	echo rm -f "/tmp/${PROG_NAME}.$$."*
@@ -21,12 +26,35 @@ cleanup() {
 }
 trap cleanup EXIT
 
+usage() {
+	local exit_code="$1"
+	cat <<EOF
+usage:
+	${PROG_NAME} [-hn] [-c <container>] [-i <image>] [-p <project>] <agent>...
+	-h, --help	print help message and exit
+	-c, --container	configuration file (default: ${CONTAINER_NAME})
+	-i, --image	image name (default: ${IMAGE_NAME})
+	-n, --dry-run	enable dry-run mode
+	-p, --project	GCP project ID (default: ${GCP_PROJECT_ID})
+
+	agent:		agent name(s) (e.g., "iris-asia-east1") or "all"
+EOF
+	exit "${exit_code}"
+}
+
 main() {
+	parse_cmdline "$@"
+	update_agents
+}
+
+update_agents() {
 	local tmp_file=""
-	local host=""
 	local hosts=()
-	local zone=""
 	local zones=()
+	local agent=""
+	local host=""
+	local zone=""
+	local i
 
 	#
 	# Get the full list of all GCP VM hosts, their zones, and status.
@@ -40,26 +68,31 @@ main() {
 	# convention.  Parse out Iris agents and make sure we have
 	# equal numbers of hosts and zones.
 	#
-	# To parse out hosts and zones, we could have used mapfile
-	# but it's not available in older bash versions on macOS.
-	# mapfile -t hosts < <(sort "${tmp_file}" | awk '/^iris-/ { print $1 }')
-	# mapfile -t zones < <(sort "${tmp_file}" | awk '/^iris-/ { print $2 }')
-	#
-	while read -r host; do
-		hosts+=("${host}")
-	done < <(sort "${tmp_file}" | awk '/^iris-/ { print $1 }')
-	while read -r zone; do
-		zones+=("${zone}")
-	done < <(sort "${tmp_file}" | awk '/^iris-/ { print $2 }')
+	mapfile -t hosts < <(sort "${tmp_file}" | awk '/^iris-/ { print $1 }')
+	mapfile -t zones < <(sort "${tmp_file}" | awk '/^iris-/ { print $2 }')
 	if [[ ${#hosts[@]} -ne ${#zones[@]} ]]; then # sanity check
-		echo "${#hosts[@]} hosts but ${#zones[@]} zones"
+		echo "${#hosts[@]} hosts but ${#zones[@]} zones" >&2
 		return 1
+	fi
+	if [[ ${#AGENTS[@]} -gt 0 ]]; then
+		for agent in "${AGENTS[@]}"; do
+			for ((i=0; i<${#zones[@]}; i++)); do
+				zone="${zones[${i}]}"
+				host="iris-${zone%-*}"
+				if [[ "${agent}" == "${host}" ]]; then
+					break
+				fi
+				echo "${agent} is not in the agent list" >&2
+				return 1
+			done
+		done
 	fi
 
 	#
-	# Now iterate through the hosts and skip the ones that do
-	# not follow Iris agent host naming convention (e.g.,
-	# "iris-gcp-vm").
+	# Now iterate through the hosts and:
+	#   - skip hosts that do not follow Iris agent host naming
+	#     convention (e.g., "iris-gcp-vm").
+	#   - skip hosts that are not specified as command line arguments
 	#
 	for ((i=0; i<${#zones[@]}; i++)); do
 		zone="${zones[${i}]}"
@@ -68,13 +101,27 @@ main() {
 			echo skipping "${hosts[${i}]}"
 			continue
 		fi
-		update_agent "${host}" "${zone}"
+		if [[ ${#AGENTS[@]} -eq 0 ]]; then
+			update_agent "${host}" "${zone}"
+			continue
+		fi
+		for agent in "${AGENTS[@]}"; do
+			if [[ "${agent}" == "${host}" ]]; then
+				update_agent "${host}" "${zone}"
+				break
+			fi
+		done
 	done
 }
 
 update_agent() {
 	local host="$1"
 	local zone="$2"
+
+	if ${DRY_RUN}; then
+		echo gcloud compute ssh --project "${GCP_PROJECT_ID}" --zone "${zone}" "${host}" --command="..."
+		return
+	fi
 
 	gcloud compute ssh --project "${GCP_PROJECT_ID}" --zone "${zone}" "${host}" --command="
 		readonly IMAGE_NAME=\"${IMAGE_NAME}\"
@@ -114,6 +161,60 @@ update_agent() {
 		sudo systemctl start \${CONTAINER_NAME}
 		echo \"\${CONTAINER_NAME} updated successfully\""
 	echo
+}
+
+#
+# Parse the command line flags and arguments.
+#
+parse_cmdline() {
+	local getopt_cmd
+	local args
+	local arg
+
+	if [[ "$(uname -s)" == "Darwin" ]]; then
+		getopt_cmd="$(brew --prefix gnu-getopt)/bin/getopt"
+	else
+		getopt_cmd="$(command -v getopt)"
+	fi
+	if ! args="$("${getopt_cmd}" \
+			--options "hnc:i:p:" \
+			--longoptions "help dry-run container: image: project:" \
+			-- "$@")"; then
+		usage 1
+	fi
+	eval set -- "${args}"
+
+	# Parse flags.
+	while :; do
+		arg="$1"
+		shift
+		case "${arg}" in
+		-h|--help) usage 0;;
+		-n|--dry-run) DRY_RUN=true;;
+		-c|--container) CONTAINER_NAME="$1"; shift;;
+		-i|--image) IMAGE_NAME="$1"; shift;;
+		-p|--project) GCP_PROJECT_ID="$1"; shift;;
+		--) break;;
+		*) echo "panic: error parsing arg=${arg}" >&2; exit 1;;
+		esac
+	done
+
+	# Parse postional arguments.
+	if [[ $# -lt 1 ]]; then
+		echo "specify \"all\" or specific agent name(s)" >&2
+		return 1
+	fi
+	while [[ $# -gt 0 ]]; do
+		if [[ "$1" == "all" ]]; then
+			if [[ ${#AGENTS[@]} -ne 0 ]]; then
+				echo "cannot specify both \"all\" and specific agents names" >&2
+				return 1
+			fi
+		else
+			AGENTS+=("$1")
+		fi
+		shift
+	done
 }
 
 main "$@"
