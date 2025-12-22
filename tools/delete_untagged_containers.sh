@@ -14,6 +14,9 @@ IS_ORG=false			# --org
 OWNER=""			# arg 1
 CONTAINER_NAME=""		# arg 2
 
+#
+# Global variables.
+#
 API_BASE=""
 VERSIONS_FILE=""
 
@@ -65,13 +68,7 @@ EOF
 main() {
 	check_prerequisites
 	parse_cmdline "$@"
-	if ${IS_ORG}; then
-		API_BASE="/orgs/${OWNER}"
-	else
-		API_BASE="/users/${OWNER}"
-	fi
-
-	VERSIONS_FILE="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
+	init_globals
 	fetch_all_versions
 	if ! ${FETCH_ONLY}; then
 		delete_untagged_containers
@@ -79,7 +76,7 @@ main() {
 }
 
 #
-# Fetch all container versions.
+# Fetch the metadata of all versions of the container.
 #
 fetch_all_versions() {
 	local total_versions='.[].id'
@@ -96,18 +93,17 @@ fetch_all_versions() {
 delete_untagged_containers() {
 	local id
 	local delete_cmd
+	local untagged_versions='.[] | select((.metadata.container.tags // []) | length == 0) | .id'
 
 	while read -r id; do
 		if ${DRY_RUN}; then
 			delete_cmd=("echo")
-		else
-			delete_cmd=("xxx")
 		fi
 		delete_cmd+=("gh" "api" "--method" "DELETE" "${API_BASE}/packages/container/${CONTAINER_NAME}/versions/${id}")
 		if ! "${delete_cmd[@]}"; then
 			echo "failed to execute ${delete_cmd[*]}" >&2
 		fi
-	done < <(jq -r '.[] | select((.metadata.container.tags // []) | length == 0) | .id' "${VERSIONS_FILE}")
+	done < <(jq -r "${untagged_versions}" "${VERSIONS_FILE}")
 }
 
 #
@@ -151,6 +147,7 @@ parse_cmdline() {
 	fi
 	eval set -- "${args}"
 
+	# Parse flags.
 	while :; do
 		arg="$1"
 		shift
@@ -163,12 +160,26 @@ parse_cmdline() {
 		*) echo "panic: error parsing arg=${arg}" >&2; exit 1;;
 		esac
 	done
+	# Parse postional arguments.
 	if [[ $# -ne 2 ]]; then
 		echo "specify exactly two positional arguments" >&2
 		return 1
 	fi
 	OWNER="$1"
 	CONTAINER_NAME="${2//\//%2f}" # url-encode the container name (replace / with %2f)
+}
+
+#
+# Initialize the global variables based on the parsed command line.
+#
+init_globals() {
+	if ${IS_ORG}; then
+		API_BASE="/orgs/${OWNER}"
+	else
+		API_BASE="/users/${OWNER}"
+	fi
+
+	VERSIONS_FILE="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
 }
 
 main "$@"
