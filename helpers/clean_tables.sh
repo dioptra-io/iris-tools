@@ -16,9 +16,9 @@ usage() {
 	cat <<EOF
 usage:
 	${PROG_NAME} [-hf] [-c <config>] <uuid>...
-	-h, --help      print help message and exit
-	-f, --force     recreate cleaned tables even if they exist
-	-c, --config    configuration file (default ${CONFIG_FILE})
+	-h, --help	print help message and exit
+	-f, --force	recreate cleaned tables even if they exist
+	-c, --config	configuration file (default ${CONFIG_FILE})
 
 	uuid: measurement uuid
 EOF
@@ -29,19 +29,21 @@ main() {
 	local meas_uuid
 	local table_prefix
 
-        parse_args "$@"
-        echo "sourcing ${CONFIG_FILE}"
-        source "${CONFIG_FILE}"
+	parse_args "$@"
+	echo "sourcing ${CONFIG_FILE}" >&2
+	source "${CONFIG_FILE}"
+	echo "sourcing ${IRIS_ENV}" >&2
+	source "${IRIS_ENV}"
 
+	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
 	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
 		irisctl auth login
 	else
-		echo "irisctl will use IRIS_PASSWORD environment variable when invoked"
+		echo "irisctl will use IRIS_PASSWORD environment variable when invoked" >&2
 	fi
 
-	source "${IRIS_ENV}"
-
-	echo "tables to clean: ${TABLES_TO_CLEAN[*]}"
+	echo "assuming MEAS_MD_ALL_JSON ${MEAS_MD_ALL_JSON} is up-to-date" >&2
+	echo "tables to clean: ${TABLES_TO_CLEAN[*]}" >&2
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_CLEAN[@]}"; do
 			echo "cleaning ${meas_uuid} ${table_prefix} tables"
@@ -78,27 +80,27 @@ clean_tables() {
 			continue
 		fi
 
-		echo "creating query file to clean ${table_name}"
+		echo "creating query file to clean ${table_name}" >&2
 		uncleaned_rows=$(clickhouse-client --user "${IRIS_CLICKHOUSE_USER}" --password "${IRIS_CLICKHOUSE_PASSWORD}" -q "SELECT COUNT(*) FROM ${DATABASE_NAME}.${table_name}")
-		echo "rows: ${uncleaned_rows}"
+		echo "rows: ${uncleaned_rows}" >&2
 
 		case "${table_name}" in
 		"probes__"*)   order_by="${ORDER_BY_PROBES}";   select="${SELECT_PROBES}";;
 		"results__"*)  order_by="${ORDER_BY_RESULTS}";  select="${SELECT_RESULTS}";;
 		"links__"*)    order_by="${ORDER_BY_LINKS}";    select="${SELECT_LINKS}";;
 		"prefixes__"*) order_by="${ORDER_BY_PREFIXES}"; select="${SELECT_PREFIXES}";;
-		*) echo "internal error parsing ${table_name}"; exit 1;;
+		*) echo "internal error parsing ${table_name}" >&2; exit 1;;
 		esac
 		clean_sql="$(create_clean_query "cleaned_${table_name}" "${table_name}" "probes_${table_name#*_}" "${order_by}" "${select}")"
 
-		echo "clickhouse-client --user iris --password \${IRIS_CLICKHOUSE_PASSWORD} --queries-file ${clean_sql}"
+		echo "clickhouse-client --user iris --password \${IRIS_CLICKHOUSE_PASSWORD} --queries-file ${clean_sql}" >&2
 		clickhouse-client --user "${IRIS_CLICKHOUSE_USER}" --password "${IRIS_CLICKHOUSE_PASSWORD}" --queries-file "${clean_sql}"
 		cleaned_rows=$(clickhouse-client --user "${IRIS_CLICKHOUSE_USER}" --password "${IRIS_CLICKHOUSE_PASSWORD}" -q "SELECT COUNT(*) FROM ${DATABASE_NAME}.cleaned_${table_name}")
 		echo "rows: ${cleaned_rows} ($((uncleaned_rows - cleaned_rows)) rows deleted)"
 
 		# perform sanity check
 		if [[ ${cleaned_rows} -gt ${uncleaned_rows} ]]; then
-			echo "error: cleaned_rows ${cleaned_rows} is greater than uncleaned_rows ${uncleaned_rows}"
+			echo "error: cleaned_rows ${cleaned_rows} is greater than uncleaned_rows ${uncleaned_rows}" >&2
 			exit 1
 		fi
 		echo
@@ -132,33 +134,33 @@ EOF
 }
 
 parse_args() {
-        local args
-        local arg
+	local args
+	local arg
 
-        if ! args="$(getopt \
-                        --options "c:fh" \
-                        --longoptions "config: force help" \
-                        -- "$@")"; then
-                usage 1
-        fi
-        eval set -- "${args}"
-
-        while :; do
-                arg="$1"
-                shift
-                case "${arg}" in
-                -c|--config) CONFIG_FILE="$1"; shift 1;;
-                -f|--force) FORCE=true;;
-                -h|--help) usage 0;;
-                --) break;;
-                *) echo "internal error parsing arg=${arg}"; usage 1;;
-                esac
-        done
-
-        if [[ "$#" -eq 0 ]]; then
-                echo "${PROG_NAME}: specify at least one measurement uuid"
+	if ! args="$(getopt \
+			--options "c:fh" \
+			--longoptions "config: force help" \
+			-- "$@")"; then
 		usage 1
-        fi
+	fi
+	eval set -- "${args}"
+
+	while :; do
+		arg="$1"
+		shift
+		case "${arg}" in
+		-c|--config) CONFIG_FILE="$1"; shift 1;;
+		-f|--force) FORCE=true;;
+		-h|--help) usage 0;;
+		--) break;;
+		*) echo "internal error parsing arg=${arg}"; usage 1;;
+		esac
+	done
+
+	if [[ "$#" -eq 0 ]]; then
+		echo "${PROG_NAME}: specify at least one measurement uuid"
+		usage 1
+	fi
 	POSITIONAL_ARGS=("$@")
 }
 

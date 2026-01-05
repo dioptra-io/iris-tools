@@ -96,21 +96,7 @@ main() {
 	local all_done=false
 
 	parse_cmdline_and_conf "$@"
-
-	# Acquire lock before proceeding to avoid running multiple
-	# instances of this script.
-	set -C
-	if ! { exec 200>"${PUBLISH_LOCKFILE}"; } 2>/dev/null; then
-		echo "another instance of ${PROG_NAME} must be running because ${PUBLISH_LOCKFILE} exists"
-		return 1
-	fi
-	set +C
-	if ! flock -n 200; then
-		echo "another instance of ${PROG_NAME} must be running because ${PUBLISH_LOCKFILE} is locked"
-		return 1
-	fi
-	echo "$$" >> "${PUBLISH_LOCKFILE}"
-	log_info 1 "${PROG_NAME} ($$) acquired lock on ${PUBLISH_LOCKFILE}"
+	acquire_lock "${PUBLISH_LOCKFILE}"
 
 	if ${RESTORE_PUBLISH_CONF}; then
 		restore_publish_conf

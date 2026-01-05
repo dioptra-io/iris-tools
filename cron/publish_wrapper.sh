@@ -14,6 +14,7 @@ readonly TOPLEVEL="$(git rev-parse --show-toplevel)"
 source "${TOPLEVEL}/tools/common.sh"
 source "${TOPLEVEL}/conf/publish_settings.conf"
 
+
 #
 # Set $NOW to your desired datetime to make the publishing pipeline assume
 # it's running since then.  Otherwise, set it to the empty string to publish
@@ -25,6 +26,7 @@ source "${TOPLEVEL}/conf/publish_settings.conf"
 #
 #readonly NOW="2025-03-21T03:00:00"
 readonly NOW=""
+readonly ITERATION="${TOPLEVEL}/cache/iteration"
 readonly VERBOSE=1
 
 

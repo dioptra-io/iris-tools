@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #
-# This wrapper script is triggered by cron to handle measurement exports.
-# It calls the $EXPORT_MEASUREMENTS script, which checks for new
-# measurements that haven't been exported yet and exports them accordingly.
+# This wrapper script is invoked by cron to (1) run $EXPORT_MEASUREMENTS,
+# which exports ClickHouse tables for newly completed measurements to
+# $EXPORTS_DIR, and (2) move the exported files to $FTP_DIR.
 #
 
 set -euo pipefail
@@ -43,7 +43,7 @@ main() {
 	grep -Fvx -f "${tmp_meas_before}" "${tmp_meas_after}" > "${tmp_meas_exported}" || :
 	if [[ -s "${tmp_meas_exported}" ]]; then
 		log_info 1 "$(wc -l < "${tmp_meas_exported}") measurements exported"
-		move_measurements "${tmp_meas_exported}"
+		move_files "${tmp_meas_exported}"
 	else
 		log_info 1 "no measurements exported"
 	fi
@@ -80,10 +80,9 @@ export_measurements() {
 }
 
 #
-# Move newly exported measurements from $EXPORTS_DIR to $FTP_DIR.
-# XXX We are not deleting the files in $EXPORTS_DIR yet.
+# Move newly exported files from $EXPORTS_DIR to $FTP_DIR.
 #
-move_measurements() {
+move_files() {
 	local meas_exported_file="$1"
 	local tmp_file
 	local uuid
