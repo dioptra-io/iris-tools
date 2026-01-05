@@ -75,7 +75,9 @@ main() {
 	local files
 
 	parse_cmdline "$@"
-	acquire_lock "${EXPORT_LOCKFILE}"
+	if ! acquire_lock "${EXPORT_LOCKFILE}"; then
+		return
+	fi
 	print_vars # debugging support
 
 	if ${ONLY_INDEX_TMP}; then

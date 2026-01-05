@@ -96,7 +96,9 @@ main() {
 	local all_done=false
 
 	parse_cmdline_and_conf "$@"
-	acquire_lock "${PUBLISH_LOCKFILE}"
+	if ! acquire_lock "${PUBLISH_LOCKFILE}"; then
+		return
+	fi
 
 	if ${RESTORE_PUBLISH_CONF}; then
 		restore_publish_conf
