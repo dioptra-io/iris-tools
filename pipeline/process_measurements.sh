@@ -144,7 +144,7 @@ parse_cmdline_and_conf() {
 	source "${CONFIG_FILE}"
 
 	if ${no_cmd}; then
-		log_fatal "${PROG_NAME}: specify one or more commands"
+		log_fatal "specify at least one command"
 	fi
 	if ${DO_EXPORT_RAW_TABLES} && ${DO_EXPORT_CLEANED_TABLES}; then
 		log_fatal "cannot specify both export_raw_tables and export_cleaned_tables"

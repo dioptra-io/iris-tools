@@ -76,22 +76,7 @@ main() {
 	local files
 
 	parse_cmdline "$@"
-
-	# Acquire lock before proceeding to avoid running multiple
-	# instances of this script.
-	set -C
-	if ! { exec 200>"${EXPORT_LOCKFILE}"; } 2>/dev/null; then
-		echo "another instance of ${PROG_NAME} must be running because ${EXPORT_LOCKFILE} exists"
-		return 1
-	fi
-	set +C
-	if ! flock -n 200; then
-		echo "another instance of ${PROG_NAME} must be running because ${EXPORT_LOCKFILE} is locked"
-		return 1
-	fi
-	echo "$$" >> "${EXPORT_LOCKFILE}"
-	log_info 1 "${PROG_NAME} ($$) acquired lock on ${EXPORT_LOCKFILE}"
-
+	acquire_lock "${EXPORT_LOCKFILE}"
 	print_vars # debugging support
 
 	if ${ONLY_INDEX_TMP}; then

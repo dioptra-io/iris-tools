@@ -51,8 +51,11 @@ main() {
 	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
 	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
 		irisctl auth login
+	else
+		log_info 1 "irisctl will use IRIS_PASSWORD environment variable when invoked"
 	fi
 
+	log_info 1 "assuming MEAS_MD_ALL_JSON ${MEAS_MD_ALL_JSON} is up-to-date"
 	log_info 1 "tables to export: ${TABLES_TO_EXPORT[*]}"
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		for table_prefix in "${TABLES_TO_EXPORT[@]}"; do
@@ -165,7 +168,7 @@ parse_cmdline_and_conf() {
 	source "${IRIS_ENV}"
 
 	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
-		log_fatal "${PROG_NAME}: specify at least one measurement uuid"
+		log_fatal "specify at least one measurement uuid"
 	fi
 }
 

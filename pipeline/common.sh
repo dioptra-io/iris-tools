@@ -8,6 +8,27 @@ readonly START_MAGENTA="\033[1;35m"
 readonly END_COLOR="\033[0m"
 
 #
+# Acquire lock before proceeding to avoid running multiple
+# instances of the caller.
+#
+acquire_lock() {
+	local lock="$1"
+
+	set -C
+	if ! { exec 200>"${lock}"; } 2>/dev/null; then
+		log_info 1 "another instance of ${PROG_NAME} must be running because ${lock} exists"
+		return 1
+	fi
+	set +C
+	if ! flock -n 200; then
+		log_info 1 "another instance of ${PROG_NAME} must be running because ${lock} is locked"
+		return 1
+	fi
+	echo "$$" >> "${lock}"
+	log_info 1 "pid $$ acquired lock on ${lock}"
+}
+
+#
 # Log an informative message for easier tracking and debugging.
 #
 log_info() {
