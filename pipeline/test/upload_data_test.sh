@@ -5,7 +5,7 @@ shellcheck "$0" # exits if shellcheck doesn't pass
 
 TOPLEVEL="$(git rev-parse --show-toplevel)"
 readonly TOPLEVEL
-readonly UPLOAD_DATA="${TOPLEVEL}/tools/upload_data.sh"
+readonly UPLOAD_DATA="${TOPLEVEL}/pipeline/upload_data.sh"
 
 # Test that upload_data function returns 1 when no files are found
 test_upload_data_returns_1_when_no_files() {

@@ -4,7 +4,7 @@ set -euo pipefail
 shellcheck "$0" # exits if shellcheck doesn't pass
 
 readonly TOPLEVEL="$(git rev-parse --show-toplevel)"
-readonly PUBLISH_MEASUREMENTS="${TOPLEVEL}/tools/publish_measurements.sh"
+readonly PUBLISH_MEASUREMENTS="${TOPLEVEL}/pipeline/publish_measurements.sh"
 readonly VERBOSE="4"
 
 rm -f "${TOPLEVEL}/conf/metadata_all" "${TOPLEVEL}/conf/data_all"

@@ -25,7 +25,7 @@ shellcheck "$0"
 
 readonly PROG_NAME="${0##*/}"
 readonly TOPLEVEL="$(git rev-parse --show-toplevel)"
-source "${TOPLEVEL}/tools/common.sh"
+source "${TOPLEVEL}/pipeline/common.sh"
 source "${TOPLEVEL}/conf/export_settings.conf"
 
 #
