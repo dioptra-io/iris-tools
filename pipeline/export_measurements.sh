@@ -4,20 +4,19 @@
 # This shell script exports newly obtained Iris measurement data and
 # works as follows:
 #
-#   1. Using `irisctl`, it gets the list of all $TAG measurements that
-#      finished successfully.  To skip this step, set $ALL_MEAS to your
-#      desired all measurements file.
+#   1. Using `irisctl`, it generates the list of all $TAG measurements
+#      that finished successfully.  To skip this step, set
+#      $EXPORT_ALL_MEAS to your desired all measurements file.
 #   2. It checks each measurement in the above list against already
-#      exported data in $EXPORTS_DIR and creates a new measurement list.
-#      To skip this step, set $NEW_MEAS to your desired new measurements
-#      file.
+#      exported measurements recorded in $EXPORTED_MEAS, or in $INDEX_MD
+#      if $EXPORTED_MEAS does not exist, to create a new measurement
+#      list.  To skip this step, set $EXPORT_NEW_MEAS to your desired
+#      new measurements file.
 #   3. For each new measurement in $NEW_UUIDS, it runs the container
-#      image $IRIS_EXPORTER_IMAGE to export the data.
-#   4. Finally, it generates the INDEX.md file.
-#
-# If $EXPORTED_MEAS does not exist *and* $EXPORTS_DIR has not been
-# purged, it can be created by the following command line:
-# (cd "${EXPORTS_DIR}" && find . -print | grep json | sed -e 's;./;;' -e 's;.json;;' | sort) > "${EXPORTED_MEAS}"
+#      image $IRIS_EXPORTER_IMAGE to export the data of the measurement
+#      to $EXPORTS_DIR_TMP.
+#   4. It generates the new INDEX.md file in $EXPORTS_DIR_TMP.
+#   5. It moves files from $EXPORTS_DIR_TMP to $EXPORTS_DIR.
 #
 
 set -euo pipefail
@@ -90,6 +89,13 @@ main() {
 		return
 	fi
 
+	if [[ ! -f "${EXPORTED_MEAS}" ]]; then
+		if [[ ! -f "${INDEX_MD}" ]]; then
+			log_fatal "neither ${EXPORTED_MEAS} nor ${INDEX_MD} exists"
+		fi
+		log_info 1 "${EXPORTED_MEAS} does not exist; using ${INDEX_MD} to generate new measurement list"
+	fi
+
 	generate_new_meas_list
 	if ${ONLY_NEW_MEAS}; then
 		return
@@ -111,9 +117,10 @@ print_vars() {
 	log_info 1 "EXPORTS_DIR=${EXPORTS_DIR}"
 	log_info 1 "EXPORTS_DIR_TMP=${EXPORTS_DIR_TMP}"
 	log_info 1 "TAG=${TAG}"
-	log_info 1 "ALL_MEAS=${ALL_MEAS}"
-	log_info 1 "NEW_MEAS=${NEW_MEAS}"
+	log_info 1 "EXPORT_ALL_MEAS=${EXPORT_ALL_MEAS}"
+	log_info 1 "EXPORT_NEW_MEAS=${EXPORT_NEW_MEAS}"
 	log_info 1 "EXPORTED_MEAS=${EXPORTED_MEAS}"
+	log_info 1 "INDEX_MD=${INDEX_MD}"
 }
 
 #
@@ -132,12 +139,12 @@ generate_new_meas_list() {
 
 	# If we already have the list of all $TAG measurements, just read it.
 	# Otherwise, use `irisctl` to generate it.
-	if [[ "${ALL_MEAS}" != "" ]]; then
-		if [[ ! -f "${ALL_MEAS}" ]]; then
-			log_fatal "${ALL_MEAS} does not exist"
+	if [[ "${EXPORT_ALL_MEAS}" != "" ]]; then
+		if [[ ! -f "${EXPORT_ALL_MEAS}" ]]; then
+			log_fatal "${EXPORT_ALL_MEAS} does not exist"
 		fi
-		log_info 1 using existing "${ALL_MEAS}"
-		mapfile -t all_uuids < <(awk '/^[0-9a-f][0-9a-f]*/ { print $1 }' "${ALL_MEAS}")
+		log_info 1 using existing "${EXPORT_ALL_MEAS}"
+		mapfile -t all_uuids < <(awk '/^[0-9a-f][0-9a-f]*/ { print $1 }' "${EXPORT_ALL_MEAS}")
 	else
 		all_meas_file="$(mktemp "/tmp/${PROG_NAME}.${TAG}.all.$$.XXXX")"
 		log_info 1 "irisctl list --all-users --tag ${TAG} --state finished -o > ${all_meas_file}"
@@ -153,12 +160,12 @@ generate_new_meas_list() {
 	
 	# If we already have the list of new measurements to export, just read it
 	# into $NEW_UUIDS.  Otherwise, use $all_uuids to set $NEW_UUIDS.
-	if [[ "${NEW_MEAS}" != "" ]]; then
-		if [[ ! -f "${NEW_MEAS}" ]]; then
-			log_fatal "${NEW_MEAS} does not exist"
+	if [[ "${EXPORT_NEW_MEAS}" != "" ]]; then
+		if [[ ! -f "${EXPORT_NEW_MEAS}" ]]; then
+			log_fatal "${EXPORT_NEW_MEAS} does not exist"
 		fi
-		log_info 1 "using existing new measurements file ${NEW_MEAS}"
-		mapfile -t NEW_UUIDS < <(cat "${NEW_MEAS}")
+		log_info 1 "using existing new measurements file ${EXPORT_NEW_MEAS}"
+		mapfile -t NEW_UUIDS < <(cat "${EXPORT_NEW_MEAS}")
 	else
 		log_info 2 "generating new measurements list"
 		for uuid in "${all_uuids[@]}"; do
@@ -172,8 +179,7 @@ generate_new_meas_list() {
 					NEW_UUIDS+=("${uuid}")
 				fi
 			else
-				files=$(echo "${EXPORTS_DIR}"/*"${uuid//-/_}"*)
-				if [[ "${files}" == "${EXPORTS_DIR}/*${uuid//-/_}*" ]]; then
+				if ! grep -q "${uuid:0:8}" "${INDEX_MD}" ; then
 					NEW_UUIDS+=("${uuid}")
 				fi
 			fi
