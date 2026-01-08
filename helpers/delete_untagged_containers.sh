@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 shellcheck "$0"
@@ -98,8 +98,15 @@ delete_untagged_containers() {
 	while read -r id; do
 		if ${DRY_RUN}; then
 			delete_cmd=("echo")
+		else
+			delete_cmd=()
 		fi
-		delete_cmd+=("gh" "api" "--method" "DELETE" "${API_BASE}/packages/container/${CONTAINER_NAME}/versions/${id}")
+		delete_cmd+=(
+				"gh" "api" "--method" "DELETE"
+				"-H" "Accept: application/vnd.github+json"
+				"-H" "X-GitHub-Api-Version: 2022-11-28"
+				"${API_BASE}/packages/container/${CONTAINER_NAME}/versions/${id}"
+			    )
 		if ! "${delete_cmd[@]}"; then
 			echo "failed to execute ${delete_cmd[*]}" >&2
 		fi
@@ -133,6 +140,7 @@ parse_cmdline() {
 	local getopt_cmd
 	local args
 	local arg
+	local answer
 
 	if [[ "$(uname -s)" == "Darwin" ]]; then
 		getopt_cmd="$(brew --prefix gnu-getopt)/bin/getopt"
@@ -166,6 +174,12 @@ parse_cmdline() {
 		return 1
 	fi
 	OWNER="$1"
+	if [[ "${OWNER}" == "dioptra-io" && "${IS_ORG}" == "false" ]]; then
+		read -r -p "did you forget --org? [Y/n] " answer
+		if [[ "${answer}" != "n" ]]; then
+			exit
+		fi
+	fi
 	CONTAINER_NAME="${2//\//%2f}" # url-encode the container name (replace / with %2f)
 }
 
