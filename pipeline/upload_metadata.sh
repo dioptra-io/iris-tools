@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 export SHELLCHECK_OPTS="--exclude=SC1090"
@@ -49,10 +49,8 @@ main() {
 		log_fatal "${BQ_PUBLIC_DATASET} does not exist"
 	fi
 
-	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
-	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
-		irisctl auth login
-	fi
+	# Authenticate with Iris API so we can run irisctl.
+	irisctl_auth
 
 	for meas_uuid in "${POSITIONAL_ARGS[@]}"; do
 		# Fetch metadata of $meas_uuid.
@@ -207,7 +205,6 @@ parse_cmdline_and_conf() {
 	fi
 	eval set -- "${args}"
 
-	# Parse flags.
 	while :; do
 		arg="$1"
 		shift
@@ -221,14 +218,12 @@ parse_cmdline_and_conf() {
 		esac
 	done
 	POSITIONAL_ARGS=("$@")
+	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
+		log_fatal "specify at least one measurement uuid"
+	fi
 
 	log_info 1 "sourcing ${CONFIG_FILE}"
 	source "${CONFIG_FILE}"
-
-	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
-		echo "specify at least one measurement uuid"
-		usage 1
-	fi
 }
 
 main "$@"

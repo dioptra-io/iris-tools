@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #
 # This shell script exports newly obtained Iris measurement data and
@@ -26,16 +26,16 @@ shellcheck "$0"
 readonly PROG_NAME="${0##*/}"
 readonly TOPLEVEL="$(git rev-parse --show-toplevel)"
 source "${TOPLEVEL}/pipeline/common.sh"
-source "${TOPLEVEL}/conf/export_settings.conf"
 
 #
 # Global variables to support command line flags and arguments.
 #
-ONLY_MOVE=false		# --only-move
-NO_MOVE=false		# --no-move
-ONLY_INDEX_TMP=false	# --only-index-tmp
-ONLY_NEW_MEAS=false	# --only-new-meas
-VERBOSE=1		# --verbose
+CONFIG_FILE="${TOPLEVEL}/conf/export_settings.conf"	# --config
+ONLY_MOVE=false						# --only-move
+NO_MOVE=false						# --no-move
+ONLY_INDEX_TMP=false					# --only-index-tmp
+ONLY_NEW_MEAS=false					# --only-new-meas
+VERBOSE=1						# --verbose
 
 #
 # Other global variables.
@@ -51,11 +51,16 @@ usage() {
 
         cat <<EOF
 usage:
-        ${PROG_NAME} -h
+        ${PROG_NAME} --help
+        ${PROG_NAME} [-c <config>] [-v <n>] --only-index-tmp
+        ${PROG_NAME} [-c <config>] [-v <n>] --only-move
+        ${PROG_NAME} [-c <config>] [-v <n>] --only-new-meas
+        ${PROG_NAME} [-c <config>] [-v <n>] [--no-move]
+	-c, --config    configuration file (default ${CONFIG_FILE})
         -h, --help		print help message and exit
             --no-move		do not move files from "${EXPORTS_DIR_TMP}" to "${EXPORTS_DIR}"
-            --only-move		just move files from "${EXPORTS_DIR_TMP}" to "${EXPORTS_DIR}"
-	    --only-index-tmp	just generate and update "${INDEX_MD_TMP}"
+            --only-move		just move files from "${EXPORTS_DIR_TMP}" to "${EXPORTS_DIR}" and exit
+	    --only-index-tmp	just generate and update "${INDEX_MD_TMP}" and exit
             --only-new-meas	just generate the list of new measurements to export and exit
 	-v, --verbose		set the verbosity level (default: ${VERBOSE})
 EOF
@@ -74,7 +79,7 @@ trap cleanup EXIT
 main() {
 	local files
 
-	parse_cmdline "$@"
+	parse_cmdline_and_conf "$@"
 	if ! acquire_lock "${EXPORT_LOCKFILE}"; then
 		return
 	fi
@@ -98,6 +103,8 @@ main() {
 		log_info 1 "${EXPORTED_MEAS} does not exist; using ${INDEX_MD} to generate new measurement list"
 	fi
 
+	# Authenticate with Iris API so we can run irisctl.
+	irisctl_auth
 	generate_new_meas_list
 	if ${ONLY_NEW_MEAS}; then
 		return
@@ -204,12 +211,6 @@ export_new_meas() {
 	if [[ ! -f "${EXPORTED_MEAS}" ]]; then
 		log_fatal "${EXPORTED_MEAS} does not exist"
 	fi
-	if [[ "${IRIS_PASSWORD}" == "" ]]; then
-		log_fatal "IRIS_PASSWORD is not set"
-	fi
-	if [[ "${CLICKHOUSE_PASSWORD}" == "" ]]; then
-		log_fatal "${CLICKHOUSE_PASSWORD} is not set"
-	fi
 
 	chmod 644 "${EXPORTED_MEAS}"
 	for uuid in "${NEW_UUIDS[@]}"; do
@@ -294,21 +295,23 @@ move_files() {
 #
 # Parse the command line and the configuration file.
 #
-parse_cmdline() {
+parse_cmdline_and_conf() {
 	local args
 	local arg
 
 	if ! args="$(getopt \
-			--options "hv:" \
-			--longoptions "help only-move no-move only-index-tmp only-new-meas verbose:" \
+			--options "c:hv:" \
+			--longoptions "config: help only-move no-move only-index-tmp only-new-meas verbose:" \
 			-- "$@")"; then
 		return 1
 	fi
 	eval set -- "${args}"
+
 	while :; do
 		arg="$1"
 		shift
 		case "${arg}" in
+		-c|--config) CONFIG_FILE="$1"; shift 1;;
 		-h|--help) usage 0;;
 		   --only-move) ONLY_MOVE=true;;
 		   --no-move) NO_MOVE=true;;
@@ -322,6 +325,9 @@ parse_cmdline() {
 	if [[ $# -ne 0 ]]; then
 		log_fatal "invalid command line"
 	fi
+
+	log_info 1 "sourcing ${CONFIG_FILE}"
+	source "${CONFIG_FILE}"
 }
 
 main "$@"

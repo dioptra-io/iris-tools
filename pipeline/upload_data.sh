@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
-shopt -s nullglob
+shopt -s nullglob # make unmatched glob patterns expand to nothing
 export SHELLCHECK_OPTS="--exclude=SC1090,SC2064"
 shellcheck "$0"
 
@@ -69,10 +69,8 @@ main() {
 		fi
 	fi
 
-	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
-	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
-		irisctl auth login
-	fi
+	# Authenticate with Iris API so we can run irisctl.
+	irisctl_auth
 
 	log_info 2 "tables to upload: ${TABLES_TO_UPLOAD[*]}"
         meas_md_tmpfile="$(mktemp "/tmp/${PROG_NAME}.$$.XXXX")"
@@ -294,15 +292,12 @@ parse_cmdline_and_conf() {
 		esac
 	done
 	POSITIONAL_ARGS=("$@")
-
-	log_info 1 "sourcing ${CONFIG_FILE}"
-	source "${CONFIG_FILE}"
-	log_info 1 "sourcing ${IRIS_ENV}"
-	source "${IRIS_ENV}"
-
 	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
 		log_fatal "specify at least one measurement uuid"
 	fi
+
+	log_info 1 "sourcing ${CONFIG_FILE}"
+	source "${CONFIG_FILE}"
 
 	# Check if $GCP_INSTANCES is provided and the corresponding file exists.
 	if [[ -n "${GCP_INSTANCES}" && ! -f "${GCP_INSTANCES}" ]]; then

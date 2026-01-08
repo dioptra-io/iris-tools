@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 export SHELLCHECK_OPTS="--exclude=SC1090,SC2064"
@@ -140,9 +140,6 @@ parse_cmdline_and_conf() {
 	done
 	POSITIONAL_ARGS=("$@")
 
-	log_info 1 "sourcing ${CONFIG_FILE}"
-	source "${CONFIG_FILE}"
-
 	if ${no_cmd}; then
 		log_fatal "specify at least one command"
 	fi
@@ -155,6 +152,9 @@ parse_cmdline_and_conf() {
 	if [[ "${INPUT_FILE}" != "" && ! -f "${INPUT_FILE}" ]]; then
 		log_fatal "${INPUT_FILE} does not exist"
 	fi
+
+	log_info 1 "sourcing ${CONFIG_FILE}"
+	source "${CONFIG_FILE}"
 }
 
 main "$@"

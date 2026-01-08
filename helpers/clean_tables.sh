@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 export SHELLCHECK_OPTS="--exclude=SC1090,SC2064"
@@ -32,15 +32,9 @@ main() {
 	parse_args "$@"
 	echo "sourcing ${CONFIG_FILE}" >&2
 	source "${CONFIG_FILE}"
-	echo "sourcing ${IRIS_ENV}" >&2
-	source "${IRIS_ENV}"
 
-	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
-	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
-		irisctl auth login
-	else
-		echo "irisctl will use IRIS_PASSWORD environment variable when invoked" >&2
-	fi
+	# Authenticate with Iris API so we can run irisctl.
+	irisctl_auth
 
 	echo "assuming MEAS_MD_ALL_JSON ${MEAS_MD_ALL_JSON} is up-to-date" >&2
 	echo "tables to clean: ${TABLES_TO_CLEAN[*]}" >&2
@@ -81,7 +75,7 @@ clean_tables() {
 		fi
 
 		echo "creating query file to clean ${table_name}" >&2
-		uncleaned_rows=$(clickhouse-client --user "${IRIS_CLICKHOUSE_USER}" --password "${IRIS_CLICKHOUSE_PASSWORD}" -q "SELECT COUNT(*) FROM ${DATABASE_NAME}.${table_name}")
+		uncleaned_rows=$(clickhouse-client --user "${CLICKHOUSE_USERNAME}" --password "${CLICKHOUSE_PASSWORD}" -q "SELECT COUNT(*) FROM ${DATABASE_NAME}.${table_name}")
 		echo "rows: ${uncleaned_rows}" >&2
 
 		case "${table_name}" in
@@ -93,9 +87,9 @@ clean_tables() {
 		esac
 		clean_sql="$(create_clean_query "cleaned_${table_name}" "${table_name}" "probes_${table_name#*_}" "${order_by}" "${select}")"
 
-		echo "clickhouse-client --user iris --password \${IRIS_CLICKHOUSE_PASSWORD} --queries-file ${clean_sql}" >&2
-		clickhouse-client --user "${IRIS_CLICKHOUSE_USER}" --password "${IRIS_CLICKHOUSE_PASSWORD}" --queries-file "${clean_sql}"
-		cleaned_rows=$(clickhouse-client --user "${IRIS_CLICKHOUSE_USER}" --password "${IRIS_CLICKHOUSE_PASSWORD}" -q "SELECT COUNT(*) FROM ${DATABASE_NAME}.cleaned_${table_name}")
+		echo "clickhouse-client --user iris --password \${CLICKHOUSE_PASSWORD} --queries-file ${clean_sql}" >&2
+		clickhouse-client --user "${CLICKHOUSE_USERNAME}" --password "${CLICKHOUSE_PASSWORD}" --queries-file "${clean_sql}"
+		cleaned_rows=$(clickhouse-client --user "${CLICKHOUSE_USERNAME}" --password "${CLICKHOUSE_PASSWORD}" -q "SELECT COUNT(*) FROM ${DATABASE_NAME}.cleaned_${table_name}")
 		echo "rows: ${cleaned_rows} ($((uncleaned_rows - cleaned_rows)) rows deleted)"
 
 		# perform sanity check

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #
 # This script scans the log lines of $CONTAINER_NAME to compute and
