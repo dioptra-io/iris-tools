@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 shellcheck "$0" # exits if shellcheck doesn't pass

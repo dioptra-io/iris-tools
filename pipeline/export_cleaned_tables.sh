@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 export SHELLCHECK_OPTS="--exclude=SC1090,SC2064"
@@ -48,12 +48,8 @@ main() {
 
 	parse_cmdline_and_conf "$@"
 
-	# If $IRIS_PASSWORD is not set, authtenticate irisctl now by prompting the user.
-	if [[ -z "${IRIS_PASSWORD+x}" ]]; then
-		irisctl auth login
-	else
-		log_info 1 "irisctl will use IRIS_PASSWORD environment variable when invoked"
-	fi
+	# Authenticate with Iris API so we can run irisctl.
+	irisctl_auth
 
 	log_info 1 "assuming MEAS_MD_ALL_JSON ${MEAS_MD_ALL_JSON} is up-to-date"
 	log_info 1 "tables to export: ${TABLES_TO_EXPORT[*]}"
@@ -111,12 +107,12 @@ export_cleaned_tables() {
 		query="${query//\$\{DATABASE_NAME\}/$DATABASE_NAME}"
 		query="${query//\$\{EXPORT_FORMAT\}/$EXPORT_FORMAT}"
 		if ${DRY_RUN}; then
-			log_info 1 clickhouse-client --user="${IRIS_CLICKHOUSE_USER}" --password="${IRIS_CLICKHOUSE_PASSWORD}" -mn "<<EOF > ${export_file}"
+			log_info 1 clickhouse-client --user="${CLICKHOUSE_USERNAME}" --password="${CLICKHOUSE_PASSWORD}" -mn "<<EOF > ${export_file}"
 			echo "${query}"
 			echo "EOF"
 			continue
 		fi
-		"${TIME[@]}" clickhouse-client --user="${IRIS_CLICKHOUSE_USER}" --password="${IRIS_CLICKHOUSE_PASSWORD}" -mn <<EOF > "${export_file}"
+		"${TIME[@]}" clickhouse-client --user="${CLICKHOUSE_USERNAME}" --password="${CLICKHOUSE_PASSWORD}" -mn <<EOF > "${export_file}"
 ${query}
 EOF
 	done
@@ -161,15 +157,12 @@ parse_cmdline_and_conf() {
 		esac
 	done
 	POSITIONAL_ARGS=("$@")
-
-	log_info 1 "sourcing ${CONFIG_FILE}"
-	source "${CONFIG_FILE}"
-	log_info 1 "sourcing ${IRIS_ENV}"
-	source "${IRIS_ENV}"
-
 	if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
 		log_fatal "specify at least one measurement uuid"
 	fi
+
+	log_info 1 "sourcing ${CONFIG_FILE}"
+	source "${CONFIG_FILE}"
 }
 
 main "$@"

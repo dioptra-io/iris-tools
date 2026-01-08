@@ -53,20 +53,10 @@ main() {
 # Export measurements to $EXPORTS_DIR.
 #
 export_measurements() {
-	export PATH=/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
-	export SHELL=/bin/bash
-
-	IRIS_PASSWORD="$(sops -d "${SECRETS_YML}" | yq e ".services.production.api[] | select(.user == \"${IRIS_USERNAME}\") | .pass" -)"
-	if [[ "${IRIS_PASSWORD}" == "" ]]; then
-		log_fatal "failed to get IRIS_PASSWORD"
-	fi
-	export IRIS_PASSWORD
-	CLICKHOUSE_PASSWORD="$(sops -d "${SECRETS_YML}" | yq e ".services.production.clickhouse[] | select(.user == \"${CLICKHOUSE_USERNAME}\") | .pass" -)"
-	if [[ "${CLICKHOUSE_PASSWORD}" == "" ]]; then
-		log_fatal "failed to get CLICKHOUSE_PASSWORD"
-	fi
-	export CLICKHOUSE_PASSWORD
-
+	#
+	# Run $EXPORT_MEASUREMENTS.
+	#
+	setup_environment
 	log_info 1 "${EXPORT_MEASUREMENTS} -v 2"
 	if "${EXPORT_MEASUREMENTS}" -v 2; then
 		log_info 0 "${EXPORT_MEASUREMENTS} exited successfully"

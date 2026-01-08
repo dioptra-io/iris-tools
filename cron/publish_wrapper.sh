@@ -80,24 +80,9 @@ main() {
 	fi
 
 	#
-	# Set up the environment for $PUBLISH_MEASUREMENTS.
-	#
-	export PATH=/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
-	export SHELL=/bin/bash
-	if [[ ! -f "${SECRETS_YML}" ]]; then
-		log_info 1 "${SECRETS_YML} does not exist"
-		exit 1
-	fi
-	IRIS_PASSWORD="$(sops -d "${SECRETS_YML}" | yq e '.services.production.api[0].pass' -)"
-	if [[ "${IRIS_PASSWORD}" == "" ]]; then
-		log_info 1 "failed to get IRIS_PASSWORD"
-		exit 1
-	fi
-	export IRIS_PASSWORD
-
-	#
 	# Run $PUBLISH_MEASUREMENTS.
 	#
+	setup_environment
 	log_info 1 "${cmd_line[*]}"
 	if "${cmd_line[@]}"; then
 		log_info 1 "${PUBLISH_MEASUREMENTS} exited successfully"

@@ -1,11 +1,44 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -eu
 
-readonly START_RED="\033[1;31m"
-readonly START_BLUE="\033[1;34m"
-readonly START_MAGENTA="\033[1;35m"
-readonly END_COLOR="\033[0m"
+source "${TOPLEVEL}/conf/common_settings.sh"
+
+#
+# This function is called by cron wrappers to set up the environment
+# before calling the scripts.  When cron starts a wrapper, PATH is
+# /usr/bin:/bin and SHELL is /bin/sh.
+#   - PATH
+#   - SHELL
+#   - IRIS_PASSWORD (for irisctl and iris-exporter-legacy)
+#   - CLICKHOUSE_PASSWORD (for exporting and iris-exporter-legacy)
+#
+setup_environment() {
+	export PATH=/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+	export SHELL=/bin/bash
+
+	if [[ ! -f "${SECRETS_YML}" ]]; then
+		log_fatal "${SECRETS_YML} does not exist or is not a regular file"
+	fi
+
+        if [[ -z "${IRIS_USERNAME:-}" ]]; then
+                log_fatal "IRIS_USERNAME is unset or empty"
+        fi
+	IRIS_PASSWORD="$(sops -d "${SECRETS_YML}" | yq e ".services.production.api[] | select(.user == \"${IRIS_USERNAME}\") | .pass" -)"
+	if [[ -z "${IRIS_PASSWORD}" ]]; then
+		log_fatal "failed to get IRIS_PASSWORD"
+	fi
+	export IRIS_PASSWORD
+
+        if [[ -z "${CLICKHOUSE_USERNAME:-}" ]]; then
+                log_fatal "CLICKHOUSE_USERNAME is unset or empty"
+        fi
+	CLICKHOUSE_PASSWORD="$(sops -d "${SECRETS_YML}" | yq e ".services.production.clickhouse[] | select(.user == \"${CLICKHOUSE_USERNAME}\") | .pass" -)"
+	if [[ -z "${CLICKHOUSE_PASSWORD}" ]]; then
+		log_fatal "failed to get CLICKHOUSE_PASSWORD"
+	fi
+	export CLICKHOUSE_PASSWORD
+}
 
 #
 # Acquire lock before proceeding to avoid running multiple
@@ -26,6 +59,20 @@ acquire_lock() {
 	fi
 	echo "$$" >> "${lock}"
 	log_info 1 "pid $$ acquired lock on ${lock}"
+}
+
+#
+# Authenticate with Iris API if $IRIS_PASSWORD is unset or empty ("").
+#
+irisctl_auth() {
+        if [[ -z "${IRIS_PASSWORD+x}" ]]; then
+                log_fatal "IRIS_PASSWORD is unset"
+        fi
+	if [[ -z "${IRIS_PASSWORD}" ]]; then
+		log_fatal "IRIS_PASSWORD is empty"
+	fi
+	log_info 1 "irisctl is using IRIS_PASSWORD environment variable to authenticate"
+	irisctl auth login
 }
 
 #

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 export SHELLCHECK_OPTS="--exclude=SC1090,SC2034,SC2064,SC2129"
@@ -13,7 +13,7 @@ source "${TOPLEVEL}/pipeline/common.sh"
 #
 CONFIG_FILE="${TOPLEVEL}/conf/publish_settings.conf"	# --config
 DRY_RUN=false						# --dry-run
-LIST_PUBLISH_VARS=false					# --list
+LIST_PUBLISHED_VARS=false				# --list
 NOW=""							# --now
 RESTORE_PUBLISH_CONF=false				# --restore
 USE_CACHE=false						# --use-cache
@@ -77,12 +77,12 @@ usage:
 	-c, --config	configuration file (default ${CONFIG_FILE})
 	-n, --dry-run	enable dry-run mode
 	-h, --help	print help message and exit
-	-l, --list	list publishing variables and their values, then exit
+	-l, --list	list published metadata and data variables and their values, then exit
 	    --now	assume now is the given arg in the format yyyy-mm-ddThh:mm:ss
-	-r, --restore	restore \${PUBLISH_METADATA_CONF} and \${PUBLISH_DATA_CONF}, then exit
+	-r, --restore	restore \${PUBLISHED_METADATA_CONF} and \${PUBLISHED_DATA_CONF}, then exit
 	-u, --use-cache	use the cached \${MEAS_MD_ALL_JSON} file
 	-v, --verbose	set the verbosity level (default: ${VERBOSE})
-	-z, --zero	zero out \${PUBLISH_METADATA_CONF} and \${PUBLISH_DATA_CONF} before selecting
+	-z, --zero	zero out \${PUBLISHED_METADATA_CONF} and \${PUBLISHED_DATA_CONF} before selecting
 EOF
 }
 
@@ -108,8 +108,8 @@ main() {
 		zero_publish_conf
 		all_done=true
 	fi
-	if ${LIST_PUBLISH_VARS}; then
-		source_publish_conf
+	if ${LIST_PUBLISHED_VARS}; then
+		source_published_conf
 		list_publish_conf "all"
 		all_done=true
 	fi
@@ -117,7 +117,7 @@ main() {
 		return
 	fi
 
-	source_publish_conf
+	source_published_conf
 	# Remove the existing JSON Web Token (jwt) file before running the
 	# first `irisctl` command to force reauthentication and avoid using
 	# an expired token.
@@ -126,10 +126,11 @@ main() {
 }
 
 #
-# Source the publish configuration files, perform sanity checks, and
-# save the value of each variable in its <NAME>_ORIG conunterpart.
+# Source the published metadata and data configuration files, perform
+# sanity checks, and save the value of each variable in its <NAME>_ORIG
+# conunterpart.
 #
-source_publish_conf() {
+source_published_conf() {
 	local var
 	local file
 
@@ -142,7 +143,7 @@ source_publish_conf() {
 		fi
 	done
 
-	for file in "${PUBLISH_METADATA_CONF}" "${PUBLISH_DATA_CONF}"; do
+	for file in "${PUBLISHED_METADATA_CONF}" "${PUBLISHED_DATA_CONF}"; do
 		log_info 2 "sourcing ${file}"
 		source "${file}"
 	done
@@ -219,7 +220,7 @@ list_publish_conf() {
 restore_publish_conf() {
 	local file
 
-	for file in "${PUBLISH_METADATA_CONF}" "${PUBLISH_DATA_CONF}"; do
+	for file in "${PUBLISHED_METADATA_CONF}" "${PUBLISHED_DATA_CONF}"; do
 		if [[ ! -f "${file}.bak" ]]; then
 			echo "${file}.bak does not exist"
 			continue
@@ -233,19 +234,19 @@ restore_publish_conf() {
 # Zero out publish configuration files.
 #
 zero_publish_conf() {
-	echo "zeroing out ${PUBLISH_METADATA_CONF} and ${PUBLISH_DATA_CONF}"
-	mv "${PUBLISH_METADATA_CONF}" "${PUBLISH_METADATA_CONF}.bak"
-	mv "${PUBLISH_DATA_CONF}" "${PUBLISH_DATA_CONF}.bak"
+	echo "zeroing out ${PUBLISHED_METADATA_CONF} and ${PUBLISHED_DATA_CONF}"
+	mv "${PUBLISHED_METADATA_CONF}" "${PUBLISHED_METADATA_CONF}.bak"
+	mv "${PUBLISHED_DATA_CONF}" "${PUBLISHED_DATA_CONF}.bak"
 
-	echo "METADATA_PUBLISHED_LAST_UUID=" >> "${PUBLISH_METADATA_CONF}"
-	echo "METADATA_PUBLISHED_LAST_DATETIME=" >> "${PUBLISH_METADATA_CONF}"
+	echo "METADATA_PUBLISHED_LAST_UUID=" >> "${PUBLISHED_METADATA_CONF}"
+	echo "METADATA_PUBLISHED_LAST_DATETIME=" >> "${PUBLISHED_METADATA_CONF}"
 
-	echo "DATA_PUBLISHED_TOT_NUM=0" >> "${PUBLISH_DATA_CONF}"
-	echo "DATA_PUBLISHED_CUR_SET=()" >> "${PUBLISH_DATA_CONF}"
-	echo "DATA_PUBLISHED_LAST_UUID=" >> "${PUBLISH_DATA_CONF}"
-	echo "DATA_PUBLISHED_LAST_DATETIME=" >> "${PUBLISH_DATA_CONF}"
-	echo "DATA_NUM_DAYS_TO_WAIT=0" >> "${PUBLISH_DATA_CONF}"
-	echo "DATA_CONSIDERED_LAST_UUID=" >> "${PUBLISH_DATA_CONF}"
+	echo "DATA_PUBLISHED_TOT_NUM=0" >> "${PUBLISHED_DATA_CONF}"
+	echo "DATA_PUBLISHED_CUR_SET=()" >> "${PUBLISHED_DATA_CONF}"
+	echo "DATA_PUBLISHED_LAST_UUID=" >> "${PUBLISHED_DATA_CONF}"
+	echo "DATA_PUBLISHED_LAST_DATETIME=" >> "${PUBLISHED_DATA_CONF}"
+	echo "DATA_NUM_DAYS_TO_WAIT=0" >> "${PUBLISHED_DATA_CONF}"
+	echo "DATA_CONSIDERED_LAST_UUID=" >> "${PUBLISHED_DATA_CONF}"
 }
 
 #
@@ -269,10 +270,10 @@ update_publish_conf_metadata() {
 		return
 	fi
 
-	log_info 2 "updating ${PUBLISH_METADATA_CONF}"
-	mv "${PUBLISH_METADATA_CONF}" "${PUBLISH_METADATA_CONF}.bak"
+	log_info 2 "updating ${PUBLISHED_METADATA_CONF}"
+	mv "${PUBLISHED_METADATA_CONF}" "${PUBLISHED_METADATA_CONF}.bak"
 	for var in "${METADATA_PUBLISHED_VARS[@]}"; do
-		echo "${var}=${!var}" >> "${PUBLISH_METADATA_CONF}"
+		echo "${var}=${!var}" >> "${PUBLISHED_METADATA_CONF}"
 	done
 	# Debugging support.
 	echo "${NOW}   ${METADATA_PUBLISHED_LAST_UUID}" >> "${METADATA_ALL}"
@@ -318,18 +319,18 @@ update_publish_conf_data() {
 	local var
 	local uuid
 
-	log_info 2 "updating ${PUBLISH_DATA_CONF}"
-	mv "${PUBLISH_DATA_CONF}" "${PUBLISH_DATA_CONF}.bak"
+	log_info 2 "updating ${PUBLISHED_DATA_CONF}"
+	mv "${PUBLISHED_DATA_CONF}" "${PUBLISHED_DATA_CONF}.bak"
 	for var in "${DATA_PUBLISHED_VARS[@]}"; do
 		if [[ "${var}" == "DATA_PUBLISHED_CUR_SET" ]]; then
-			echo "DATA_PUBLISHED_CUR_SET=(" >> "${PUBLISH_DATA_CONF}"
+			echo "DATA_PUBLISHED_CUR_SET=(" >> "${PUBLISHED_DATA_CONF}"
 			for uuid in "${DATA_PUBLISHED_CUR_SET[@]}"; do
-				echo "    ${uuid}" >> "${PUBLISH_DATA_CONF}"
+				echo "    ${uuid}" >> "${PUBLISHED_DATA_CONF}"
 			done
-			echo ")" >> "${PUBLISH_DATA_CONF}"
+			echo ")" >> "${PUBLISHED_DATA_CONF}"
 			continue
 		fi
-		echo "${var}=${!var}" >> "${PUBLISH_DATA_CONF}"
+		echo "${var}=${!var}" >> "${PUBLISHED_DATA_CONF}"
 	done
 }
 
@@ -363,9 +364,9 @@ publish_measurements() {
 	if is_publish_conf_data_modified; then
 		# Update publish data configuration file.
 		if ! update_publish_conf_data; then
-			log_fatal "failed to update ${PUBLISH_DATA_CONF}"
+			log_fatal "failed to update ${PUBLISHED_DATA_CONF}"
 		fi
-		log_info 2 "successfully updated ${PUBLISH_DATA_CONF}"
+		log_info 2 "successfully updated ${PUBLISHED_DATA_CONF}"
 		list_publish_conf "data"
 	fi
 }
@@ -417,9 +418,9 @@ publish_metadata() {
 	METADATA_PUBLISHED_LAST_UUID="${METADATA_UUID}"
 	METADATA_PUBLISHED_LAST_DATETIME="$(irisctl meas --uuid "${METADATA_PUBLISHED_LAST_UUID}" -o |  awk -F'"' '/^  "creation_time":/ {print $4}')"
 	if ! update_publish_conf_metadata; then
-		log_fatal "failed to update ${PUBLISH_METADATA_CONF} but successfully published metadata of ${METADATA_UUID}"
+		log_fatal "failed to update ${PUBLISHED_METADATA_CONF} but successfully published metadata of ${METADATA_UUID}"
 	fi
-	log_info 2 "successfully published metadata of ${METADATA_UUID} and updated ${PUBLISH_METADATA_CONF}"
+	log_info 2 "successfully published metadata of ${METADATA_UUID} and updated ${PUBLISHED_METADATA_CONF}"
 	return 0
 }
 
@@ -811,6 +812,7 @@ parse_cmdline_and_conf() {
 		return 1
 	fi
 	eval set -- "${args}"
+
 	while :; do
 		arg="$1"
 		shift
@@ -818,7 +820,7 @@ parse_cmdline_and_conf() {
 		-c|--config) CONFIG_FILE="$1"; shift 1;;
 		-n|--dry-run) DRY_RUN=true;;
 		-h|--help) usage;;
-		-l|--list) LIST_PUBLISH_VARS=true;;
+		-l|--list) LIST_PUBLISHED_VARS=true;;
 		   --now) NOW="$1"; shift 1;;
 		-r|--restore) RESTORE_PUBLISH_CONF=true;;
 		-u|--use-cache) USE_CACHE=true;;
