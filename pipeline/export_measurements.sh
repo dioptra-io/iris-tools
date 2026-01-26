@@ -217,6 +217,7 @@ export_new_meas() {
 		date
 		export_data "${uuid}"
 		echo "${uuid}" >> "${EXPORTED_MEAS}"
+		log_info 1 "successfully exported measurement ${uuid}"
 	done
 	chmod 444 "${EXPORTED_MEAS}"
 
