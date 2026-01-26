@@ -2,7 +2,7 @@
 
 set -eu
 
-source "${TOPLEVEL}/conf/common_settings.sh"
+source "${TOPLEVEL}/conf/common_settings.conf"
 
 #
 # This function is called by cron wrappers to set up the environment
@@ -28,6 +28,7 @@ setup_environment() {
 	if [[ -z "${IRIS_PASSWORD}" ]]; then
 		log_fatal "failed to get IRIS_PASSWORD"
 	fi
+	log_info 1 "succeeded to get IRIS_PASSWORD"
 	export IRIS_PASSWORD
 
         if [[ -z "${CLICKHOUSE_USERNAME:-}" ]]; then

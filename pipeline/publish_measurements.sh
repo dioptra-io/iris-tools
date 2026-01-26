@@ -420,7 +420,7 @@ publish_metadata() {
 	if ! update_publish_conf_metadata; then
 		log_fatal "failed to update ${PUBLISHED_METADATA_CONF} but successfully published metadata of ${METADATA_UUID}"
 	fi
-	log_info 2 "successfully published metadata of ${METADATA_UUID} and updated ${PUBLISHED_METADATA_CONF}"
+	log_info 1 "successfully published metadata of ${METADATA_UUID} and updated ${PUBLISHED_METADATA_CONF}"
 	return 0
 }
 
@@ -704,7 +704,7 @@ publish_cur_set() {
 			log_fatal "failed to publish data of ${uuid}"
 		fi
 		_=$(( DATA_PUBLISHED_TOT_NUM++ ))
-		log_info 2 "successfully published data of ${uuid}"
+		log_info 1 "successfully published data of ${uuid}"
 		# Debugging support.
 		echo "${NOW}   ${uuid}" >> "${DATA_ALL}"
 	done
