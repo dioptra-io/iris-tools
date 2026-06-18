@@ -235,7 +235,7 @@ export_data() {
 
 	log_info 1 "exporting data"
 
-	export_cmd=(export --host clickhouse --user iris --password "${CLICKHOUSE_PASSWORD}" --database iris --destination /exports --uuid "${uuid}")
+	export_cmd=(export --host clickhouse --user iris --password "${CLICKHOUSE_PASSWORD}" --database iris --destination /exports --uuid "${uuid}" --no-export-links --no-export-nodes)
 	docker run \
 		--rm \
 		--env IRIS_BASE_URL="${IRIS_BASE_URL}" \
